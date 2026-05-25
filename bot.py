@@ -319,4 +319,6 @@ async def post(ctx):
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-bot.run('')
+# কোডের একদম নিচে এভাবে দিন:
+TOKEN = os.environ.get('DISCORD_TOKEN')
+bot.run(TOKEN)
