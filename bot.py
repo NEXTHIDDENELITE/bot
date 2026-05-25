@@ -111,6 +111,11 @@ async def on_message(message):
         return
 
     if message.channel.id == CHANNEL_ID:
+        # 👑 ওনার আইডির জন্য চেক রুট বাইপাস (মেসেজ ডিলিট হবে না এবং ওয়ার্নিংও আসবে না)
+        if message.author.id == OWNER_ID:
+            await bot.process_commands(message)
+            return
+
         valid_commands = ["!free", "!remove", "!info", "!post"]
         content = message.content.strip()
         
@@ -197,7 +202,7 @@ async def free(ctx, uid: str):
 
     form_data = {"uid": uid, "hardware_uid": uid}
     
-    # ৩ নম্বর রুটের (Charlie) হেডার্সকে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
+    # ৩ নম্বর রুটের (Charlie) হেডারส์কে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
     headers_charlie = {
         "User-Agent": random.choice(USER_AGENTS),  # প্রতিবার সম্পূর্ণ আলাদা ব্রাউজার শো করবে
         "Accept": "application/json, text/plain, */*",
