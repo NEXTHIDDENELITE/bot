@@ -7,6 +7,7 @@ import aiohttp              # For high-speed async HTTP requests
 import asyncio              # For parallel thread execution
 from flask import Flask, request  # For the local whitelist server
 import threading                 # For running both the bot and server together
+import random                    # For rotating User-Agents to mimic human traffic
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -23,6 +24,15 @@ OWNER_ID = 1483917215349735674
 file_lock = asyncio.Lock()
 # 🌐 Global Session Instance to prevent memory leaks and speed up connections
 bot.http_session = None
+
+# ৩ নম্বর পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
+]
 
 def load_data():
     if not os.path.exists(DATA_FILE): return {}
@@ -41,7 +51,6 @@ def save_data(data):
 # ================= FLASK LOCAL SERVER PART =================
 app = Flask('')
 
-# রেন্ডার বা Uptime Robot যখন এই লিংকে হিট করবে, তখন বট রেসপন্স করবে এবং ২৪ ঘণ্টা অন থাকবে
 @app.route('/')
 def home():
     return "🔥 NHE Bot Pro v2 is fully operational and alive! 🟢", 200
@@ -83,16 +92,14 @@ def handle_requests():
 def run_server():
     import logging
     log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR) # Suppress spammy server logs to keep console clean
+    log.setLevel(logging.ERROR)
     
-    # Render-এর জন্য হোস্ট '0.0.0.0' এবং ডাইনামিক পোর্ট সেট করা হয়েছে যাতে ২৪ ঘণ্টা অন থাকে
     port = int(os.environ.get("PORT", 5080))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 # =====================================================================
 
 @bot.event
 async def on_ready():
-    # Initialize global persistent session pool on startup
     bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
     print("🌐 Full Bypass Headers & Anti-Spam Running. Status: SECURE 🟢")
@@ -100,19 +107,15 @@ async def on_ready():
 # ==================== 🛡️ ANTI-SPAM AUTO DELETE LOGIC ====================
 @bot.event
 async def on_message(message):
-    # বটের নিজের মেসেজ ইগনোর করবে
     if message.author.bot:
         return
 
-    # শুধুমাত্র নির্দিষ্ট হোয়াইটলিস্ট চ্যানেলে ফিল্টার কাজ করবে
     if message.channel.id == CHANNEL_ID:
         valid_commands = ["!free", "!remove", "!info", "!post"]
         content = message.content.strip()
         
-        # মেসেজটি ভ্যালিড কমান্ড দিয়ে শুরু হচ্ছে কিনা চেক করা
         is_valid = any(content.startswith(cmd) for cmd in valid_commands)
         
-        # যদি ভ্যালিড কমান্ড না হয়, চ্যাট ক্লিন রাখতে ইনস্ট্যান্ট ডিলিট করবে
         if not is_valid:
             try:
                 await message.delete()
@@ -123,7 +126,6 @@ async def on_message(message):
                 print(f"❌ [Anti-Spam] Failed to delete message: {e}")
             return
 
-        # 👑 !post এবং !remove কমান্ডের জন্য অনার আইডি ভ্যালিডেশন লক
         if content.startswith("!post") or content.startswith("!remove"):
             if message.author.id != OWNER_ID:
                 try:
@@ -133,24 +135,27 @@ async def on_message(message):
                     await warn_msg.delete()
                 except Exception:
                     pass
-                return # অনার না হলে কমান্ড রান করা ব্লক করে দেবে
+                return
 
-    # মেসেজ এবং পারমিশন ঠিক থাকলে কমান্ড এক্সিকিউট করবে
     await bot.process_commands(message)
 
 # ==================== ADVANCED PARALLEL REQUEST ENGINE ====================
-async def post_to_portal(url, data, headers, portal_name):
+async def post_to_portal(url, data, headers, portal_name, is_json=False):
     """Super-fast, isolated request worker with custom regex-like keyword mapping"""
     if bot.http_session is None or bot.http_session.closed:
         bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
         
     try:
-        async with bot.http_session.post(url, data=data, headers=headers, timeout=6) as response:
-            if response.status == 200:
+        if is_json:
+            kwargs = {"json": data}
+        else:
+            kwargs = {"data": data}
+
+        async with bot.http_session.post(url, headers=headers, timeout=6, **kwargs) as response:
+            if response.status in [200, 201]:
                 res_text = await response.text()
                 lowered_res = res_text.lower()
                 
-                # High accuracy registration checking blocks
                 block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত"]
                 if any(x in lowered_res for x in block_keywords):
                     return portal_name, "Already Claimed ⚠️", False
@@ -166,13 +171,11 @@ async def post_to_portal(url, data, headers, portal_name):
 # ==================== ADVANCED BULLETPROOF !FREE COMMAND ====================
 @bot.command()
 async def free(ctx, uid: str):
-    # Safe length and character inspection
     if not (uid.isdigit() and 8 <= len(uid) <= 11):
         embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
         await ctx.send(embed=embed)
         return
 
-    # Thread-Safe Database Query Lock
     async with file_lock:
         data = load_data()
     now = time.time()
@@ -188,30 +191,33 @@ async def free(ctx, uid: str):
     )
     msg = await ctx.send(embed=loading_embed)
 
-    # Core Cluster Endpoint Configs
     portal1_url = "https://excheatsofficial.xyz/portal/59e63dd8193a762c"
     portal2_url = "https://www.anikxcheatx.com/free/bd45d206"
     portal3_url = "http://92.118.206.166:30022/NAZMUL%20EXE/free_access"
 
     form_data = {"uid": uid, "hardware_uid": uid}
     
-    # 🔥 Anti-Bot 403 Forbidden Bypass Full Headers for Portal 3
+    # ৩ নম্বর রুটের (Charlie) হেডার্সকে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
     headers_charlie = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "User-Agent": random.choice(USER_AGENTS),  # প্রতিবার সম্পূর্ণ আলাদা ব্রাউজার শো করবে
+        "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-        "Cache-Control": "max-age=0",
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json;charset=UTF-8",
         "Origin": "http://92.118.206.166:30022",
         "Referer": "http://92.118.206.166:30022/NAZMUL%20EXE/",
-        "Upgrade-Insecure-Requests": "1",
-        "Connection": "keep-alive"
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
     }
 
-    # Blazing-fast concurrent fire (Parallel I/O multiplexing)
-    task1 = post_to_portal(portal1_url, form_data, {"Referer": portal1_url}, "Secure Route Alpha 🔒")
-    task2 = post_to_portal(portal2_url, form_data, {"Referer": portal2_url}, "Secure Route Bravo 🛡️")
-    task3 = post_to_portal(portal3_url, form_data, headers_charlie, "Secure Route Charlie ⚡")
+    task1 = post_to_portal(portal1_url, form_data, {"Referer": portal1_url}, "Secure Route Alpha 🔒", is_json=False)
+    task2 = post_to_portal(portal2_url, form_data, {"Referer": portal2_url}, "Secure Route Bravo 🛡️", is_json=False)
+    task3 = post_to_portal(portal3_url, form_data, headers_charlie, "Secure Route Charlie ⚡", is_json=True)
 
     results = await asyncio.gather(task1, task2, task3)
 
@@ -224,7 +230,8 @@ async def free(ctx, uid: str):
         if is_success: any_success = True
         if "Already" not in status_text: all_already_claimed = False
 
-    # 1. Block duplicate attempts globally
+    footer_text = "🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)"
+
     if all_already_claimed:
         embed = discord.Embed(
             title="⚠️ Registration Refused",
@@ -233,10 +240,10 @@ async def free(ctx, uid: str):
         )
         for name, status in status_dict.items():
             embed.add_field(name=name, value=f"`{status}`", inline=True)
+        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
-    # 2. Complete breakdown routing error
     if not any_success:
         embed = discord.Embed(
             title="❌ Network Error",
@@ -245,20 +252,18 @@ async def free(ctx, uid: str):
         )
         for name, status in status_dict.items():
             embed.add_field(name=name, value=f"`{status}`", inline=True)
+        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
-    # 3. Dynamic expiry locking logic (Route Bravo grants 3 days, others 1 day)
     expiry_duration = 259200 if status_dict.get("Secure Route Bravo 🛡️") == "Registered 🎉" else 86400
     expiry = now + expiry_duration
 
-    # Thread-Safe Database Write Lock
     async with file_lock:
         data = load_data()
         data[uid] = expiry
         save_data(data)
 
-    # 🔄 Title changed back to your classic favorite
     embed = discord.Embed(title="✅ Access Granted & Whitelisted", color=0x00ff00)
     embed.add_field(name="Target UID", value=f"`{uid}`", inline=True)
     embed.add_field(name="Database Sync", value="Active 🟢", inline=True)
@@ -266,7 +271,8 @@ async def free(ctx, uid: str):
     embed.add_field(name="📡 Distributed Grid Status", value="\n".join([f"**{name}:** `{status}`" for name, status in status_dict.items()]), inline=False)
     
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
-    embed.set_footer(text="NHE Network Security Core", icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+    
+    embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
     await msg.edit(embed=embed)
 
 # =====================================================================
@@ -284,6 +290,8 @@ async def remove(ctx, uid: str):
             embed = discord.Embed(title="🗑️ Authorization Revoked", description=f"UID `{uid}` successfully cleared from main cluster.", color=0xff0000)
         else:
             embed = discord.Embed(title="❌ Entry Non-Existent", description=f"UID `{uid}` could not be located inside active layers.", color=0xff0000)
+    
+    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)")
     await ctx.send(embed=embed)
      
 @bot.command()
@@ -298,6 +306,8 @@ async def info(ctx):
     embed.add_field(name="Active Whitelists", value=f"`{len(active_uids)}`", inline=True)
     embed.add_field(name="System Runtime", value="Stable 🟢", inline=True)
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
+    
+    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)")
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -323,11 +333,9 @@ async def post(ctx):
     embed.set_footer(text="— NHE Team")
     await target_channel.send(content="@everyone", embed=embed)
 
-# Clean thread runtime execution
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# টোকেন অটোমেটিক রেন্ডার এনভায়রনমেন্ট থেকে নিয়ে রান করবে
 TOKEN = os.environ.get('DISCORD_TOKEN')
 if TOKEN:
     bot.run(TOKEN)
