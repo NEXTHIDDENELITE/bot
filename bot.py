@@ -3,10 +3,10 @@ from discord.ext import commands
 import json
 import time
 import os
-import aiohttp             # For high-speed async HTTP requests
-import asyncio             # For parallel thread execution
+import aiohttp              # For high-speed async HTTP requests
+import asyncio              # For parallel thread execution
 from flask import Flask, request  # For the local whitelist server
-import threading                # For running both the bot and server together
+import threading                 # For running both the bot and server together
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -40,6 +40,11 @@ def save_data(data):
 
 # ================= FLASK LOCAL SERVER PART =================
 app = Flask('')
+
+# রেন্ডার বা Uptime Robot যখন এই লিংকে হিট করবে, তখন বট রেসপন্স করবে এবং ২৪ ঘণ্টা অন থাকবে
+@app.route('/')
+def home():
+    return "🔥 NHE Bot Pro v2 is fully operational and alive! 🟢", 200
 
 @app.route('/api/uidipport', methods=['GET', 'POST'])
 @app.route('/api/certificate', methods=['GET', 'POST'])
@@ -79,7 +84,10 @@ def run_server():
     import logging
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR) # Suppress spammy server logs to keep console clean
-    app.run(host='127.0.0.1', port=5080, debug=False, use_reloader=False)
+    
+    # Render-এর জন্য হোস্ট '0.0.0.0' এবং ডাইনামিক পোর্ট সেট করা হয়েছে যাতে ২৪ ঘণ্টা অন থাকে
+    port = int(os.environ.get("PORT", 5080))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 # =====================================================================
 
 @bot.event
@@ -96,15 +104,15 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # শুধুমাত্র নির্দিষ্ট হোয়ایتলিস্ট চ্যানেলে ফিল্টার কাজ করবে
+    # শুধুমাত্র নির্দিষ্ট হোয়াইটলিস্ট চ্যানেলে ফিল্টার কাজ করবে
     if message.channel.id == CHANNEL_ID:
         valid_commands = ["!free", "!remove", "!info", "!post"]
         content = message.content.strip()
         
-        # মেসেজটি ভ্যালিড কমান্ড দিয়ে শুরু হচ্ছে কিনা চেক করা
+        # মেসেজটি ভ্যালিড কমান্ড দিয়ে শুরু হচ্ছে কিনা চেক করা
         is_valid = any(content.startswith(cmd) for cmd in valid_commands)
         
-        # যদি ভ্যালিড কমান্ড না হয়, চ্যাট ক্লিন রাখতে ইনস্ট্যান্ট ডিলিট করবে
+        # যদি ভ্যালিড কমান্ড না হয়, চ্যাট ক্লিন রাখতে ইনস্ট্যান্ট ডিলিট করবে
         if not is_valid:
             try:
                 await message.delete()
@@ -319,6 +327,9 @@ async def post(ctx):
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# কোডের একদম নিচে এভাবে দিন:
+# টোকেন অটোমেটিক রেন্ডার এনভায়রনমেন্ট থেকে নিয়ে রান করবে
 TOKEN = os.environ.get('DISCORD_TOKEN')
-bot.run(TOKEN)
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ ERROR: DISCORD_TOKEN Environment Variable is missing in Render Settings!")
