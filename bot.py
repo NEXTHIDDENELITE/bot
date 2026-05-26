@@ -20,12 +20,18 @@ ANNOUNCEMENT_CHANNEL_ID = 1480775677505441813
 # 👑 OWNER & DEVELOPER CONFIGURATION (Only this ID can use Admin Commands)
 OWNER_ID = 1483917215349735674
 
+# 🌟 VIP MANAGERS CONFIGURATION (Unlimited UIDs & Bypass Stop Lock)
+VIP_MANAGERS = [1464861365645607027, 1100273442894401616]
+
+# 🔒 Global Server Stop Status Tracker
+IS_SERVER_STOPPED = False
+
 # 🔒 File Lock to prevent JSON corruption when multi-users spam commands
 file_lock = asyncio.Lock()
 # 🌐 Global Session Instance to prevent memory leaks and speed up connections
 bot.http_session = None
 
-# ৩ নম্বর পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
+# পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -114,12 +120,18 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
 
-    # 👑 ওনার আইডির জন্য ফুল বাইপাস (সব কমান্ড ও নরমাল চ্যাট কাজ করবে)
-    if message.author.id == OWNER_ID:
+    # 👑 ওনার এবং 🌟 ভিআইপি ম্যানেজারদের জন্য ফুল চ্যাট বাইপাস
+    if message.author.id == OWNER_ID or message.author.id in VIP_MANAGERS:
         await bot.process_commands(message)
         return
 
-    valid_commands = ["!free", "!remove", "!info", "!post"]
+    # সার্ভার যদি !stop থাকে, সাধারণ মেম্বারদের মেসেজ ডিলিট হবে
+    if IS_SERVER_STOPPED:
+        try: await message.delete()
+        except: pass
+        return
+
+    valid_commands = ["!free", "!remove", "!info", "!post", "!vip"]
     content = message.content.strip()
     
     is_valid = any(content.startswith(cmd) for cmd in valid_commands)
@@ -134,7 +146,7 @@ async def on_message(message):
             print(f"❌ [Anti-Spam] Failed to delete message: {e}")
         return
 
-    if content.startswith("!post"):
+    if content.startswith("!post") or content.startswith("!vip"):
         try:
             await message.delete()
             warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
@@ -181,16 +193,29 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
 # ==================== ADVANCED BULLETPROOF !FREE COMMAND ====================
 @bot.command()
 async def free(ctx, uid: str):
+    global IS_SERVER_STOPPED
+    
+    # ইউজার ওনার বা ভিআইপি না হলে এবং সার্ভার লক থাকলে কমান্ড ব্লক
+    if IS_SERVER_STOPPED and ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
+        return
+
     if not (uid.isdigit() and 8 <= len(uid) <= 11):
         embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
-        await ctx.send(embed=embed)
+        msg = await ctx.send(embed=embed)
+        if IS_SERVER_STOPPED:  # লক থাকলে ৫ সেকেন্ড পর মেসেজ ডিলিট
+            await asyncio.sleep(5)
+            try: await ctx.message.delete()
+            except: pass
+            try: await msg.delete()
+            except: pass
         return
 
     async with file_lock:
         data = load_data()
     now = time.time()
     
-    if ctx.author.id != OWNER_ID:
+    # 🔓 ওনার এবং ভিআইপিদের জন্য ১টি UID-র লিমিট বাইপাস (Unlimited Slots)
+    if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         for existing_uid, info in data.items():
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
                 if existing_uid == uid:
@@ -219,7 +244,11 @@ async def free(ctx, uid: str):
         expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
         if expiry > now:
             embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the database.", color=0xffa500)
-            await ctx.send(embed=embed)
+            msg = await ctx.send(embed=embed)
+            if IS_SERVER_STOPPED:
+                await asyncio.sleep(5)
+                try: await ctx.message.delete(); await msg.delete()
+                except: pass
             return
 
     loading_embed = discord.Embed(
@@ -228,34 +257,16 @@ async def free(ctx, uid: str):
     )
     msg = await ctx.send(embed=loading_embed)
 
+    # ৩ নম্বর পোর্টাল রিমুভ করে দেওয়া হয়েছে, এখন শুধু ১ ও ২ নম্বর একটিভ
     portal1_url = "https://excheatsofficial.xyz/portal/59e63dd8193a762c"
     portal2_url = "https://www.anikxcheatx.com/free/bd45d206"
-    portal3_url = "http://92.118.206.166:30022/NAZMUL%20EXE/free_access"
 
-    # সাধারণ ফরম ডাটা (১ ও ২ নম্বর পোর্টালের জন্য)
     form_data = {"uid": uid, "hardware_uid": uid}
-    
-    # 🎯 ৩ নম্বর পোর্টালের জন্য ১০০% পারফেক্ট অপ্টিমাইজড JSON পে-লোড ও হেডার স্ট্রাকচার
-    charlie_payload = {
-        "uid": str(uid),
-        "id": str(uid)
-    }
-    
-    headers_charlie = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-        "Content-Type": "application/json",
-        "Origin": "http://92.118.206.166:30022",
-        "Referer": "http://92.118.206.166:30022/NAZMUL%20EXE/",
-        "Connection": "keep-alive"
-    }
 
     task1 = post_to_portal(portal1_url, form_data, {"Referer": portal1_url}, "Secure Route Alpha 🔒", is_json=False)
     task2 = post_to_portal(portal2_url, form_data, {"Referer": portal2_url}, "Secure Route Bravo 🛡️", is_json=False)
-    task3 = post_to_portal(portal3_url, charlie_payload, headers_charlie, "Secure Route Charlie ⚡", is_json=True)
 
-    results = await asyncio.gather(task1, task2, task3)
+    results = await asyncio.gather(task1, task2)
 
     status_dict = {}
     any_success = False
@@ -278,6 +289,10 @@ async def free(ctx, uid: str):
             embed.add_field(name=name, value=f"`{status}`", inline=True)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
+        if IS_SERVER_STOPPED:
+            await asyncio.sleep(5)
+            try: await ctx.message.delete(); await msg.delete()
+            except: pass
         return
 
     if not any_success:
@@ -290,9 +305,13 @@ async def free(ctx, uid: str):
             embed.add_field(name=name, value=f"`{status}`", inline=True)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
+        if IS_SERVER_STOPPED:
+            await asyncio.sleep(5)
+            try: await ctx.message.delete(); await msg.delete()
+            except: pass
         return
 
-    # টাইমিং এক্সপায়ারি সেটআপ
+    # টাইমিং এক্সপায়ারি সেটআপ
     expiry_duration = 259200 if status_dict.get("Secure Route Bravo 🛡️") == "Registered 🎉" else 86400
     expiry = now + expiry_duration
 
@@ -316,17 +335,27 @@ async def free(ctx, uid: str):
     embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
     await msg.edit(embed=embed)
 
+    # ⏱️ সার্ভার লক থাকা অবস্থায় ভিআইপি মেম্বার কমান্ড দিলে ৫ সেকেন্ড পর সব মেসেজ ডিলিট হবে
+    if IS_SERVER_STOPPED:
+        await asyncio.sleep(5)
+        try: await ctx.message.delete(); await msg.delete()
+        except: pass
+
 # =====================================================================
 
 @bot.command()
 async def remove(ctx, uid: str):
+    global IS_SERVER_STOPPED
+    if IS_SERVER_STOPPED and ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
+        return
+
     async with file_lock:
         data = load_data()
         
         if uid in data:
             info = data[uid]
             
-            if ctx.author.id != OWNER_ID:
+            if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
                 linked_id = info.get("discord_id") if isinstance(info, dict) else None
                 if linked_id != ctx.author.id:
                     embed = discord.Embed(
@@ -353,13 +382,19 @@ async def remove(ctx, uid: str):
             )
     
     embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
-    await ctx.send(embed=embed)
+    msg = await ctx.send(embed=embed)
+    if IS_SERVER_STOPPED:
+        await asyncio.sleep(5)
+        try: await ctx.message.delete(); await msg.delete()
+        except: pass
 
 # ==================== 👑 ADVANCED EXCLUSIVE OWNER COMMANDS ====================
 
 @bot.command()
 async def stop(ctx):
     if ctx.author.id != OWNER_ID: return
+    global IS_SERVER_STOPPED
+    IS_SERVER_STOPPED = True
     
     try: await ctx.message.delete()
     except: pass
@@ -380,12 +415,18 @@ async def stop(ctx):
     except Exception as e:
         print(f"❌ Failed to modify all roles permissions: {e}")
 
+    # 🎯 আপনার রিকোয়েস্টের সমস্ত পুরোনো নোটিশ মেসেজ + বড় হাতের নতুন লাইন ও ৩ জন অনার-ম্যানেজারদের আইডি লিংক
     embed = discord.Embed(
         title="🔒 NHE PREMIUM CLUSTER TERMINATED",
         description=(
             "### 🛑 Channel Status: CHAT OVERRIDE OFF\n\n"
+            "**⚠️ THIS TIME UID WHITELIST ONLY ADMIN & VIP OWNER**\n\n"
             "Dear **NHE Members & All Roles**, this channel has been completely locked by the Administrator.\n"
             "All message-sending capabilities have been revoked for every role group.\n\n"
+            "🌟 **Authorized System Personnel:**\n"
+            "👑 **Owner / Admin:** <@1483917215349735674>\n"
+            "👤 **VIP Manager 1 (KESMAT):** <@1464861365645607027>\n"
+            "👤 **VIP Manager 2 (ROHAN):** <@1100273442894401616>\n\n"
             "> **Notice:** The system is going under routine database sync or temporary pause. "
             "Please wait patiently until the Owner reactivates the terminal grid. 🚀"
         ),
@@ -398,6 +439,8 @@ async def stop(ctx):
 @bot.command()
 async def on(ctx):
     if ctx.author.id != OWNER_ID: return
+    global IS_SERVER_STOPPED
+    IS_SERVER_STOPPED = False
     
     try: await ctx.message.delete()
     except: pass
@@ -454,6 +497,23 @@ async def allremove(ctx):
     )
     embed.add_field(name="📋 Removed UIDs List", value=uid_list_text, inline=False)
     embed.set_footer(text="👑 Master Clearance Command Issued")
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def vip(ctx):
+    if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS: return
+    
+    embed = discord.Embed(
+        title="🌟 NHE VIP BROTHERS PANEL 🌟",
+        description="This panel displays authorized personnel with **Unlimited UID Slots** and **System Override Bypass Permissions**.",
+        color=0x00ffff
+    )
+    vip_list = ""
+    for count, vip_id in enumerate(VIP_MANAGERS, 1):
+        vip_list += f"**{count}.** Manager Mention: <@{vip_id}>\n➔ ID: `{vip_id}`\n\n"
+        
+    embed.add_field(name="📋 Active VIP Managers List", value=vip_list, inline=False)
+    embed.set_footer(text="👑 Security Status: SECURE TERMINAL ACCESSED")
     await ctx.send(embed=embed)
 
 # =====================================================================
