@@ -11,6 +11,8 @@ import random                    # For rotating User-Agents to mimic human traff
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DATA_FILE = "whitelist.json"
@@ -22,6 +24,9 @@ OWNER_ID = 1483917215349735674
 
 # 🌟 VIP MANAGERS CONFIGURATION (Unlimited UIDs & Bypass Stop Lock)
 VIP_MANAGERS = [1464861365645607027, 1100273442894401616]
+
+# 🏷️ ALLOWED ROLE IDS DURING STOP MODE (এই রোল আইডিগুলো !stop এর মধ্যেও কমান্ড দিতে পারবে)
+ALLOWED_ROLE_IDS = [1480832209995698259, 1480836036916674632]
 
 # 🔒 Global Server Stop Status Tracker
 IS_SERVER_STOPPED = False
@@ -111,6 +116,11 @@ async def on_ready():
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
     print("🌐 Channel Lock & Admin Guard Running. Status: SECURE 🟢")
 
+# Helper function to check if user has allowed role IDs
+def has_allowed_role(member):
+    if not hasattr(member, 'roles'): return False
+    return any(role.id in ALLOWED_ROLE_IDS for role in member.roles)
+
 # ==================== 🛡️ ANTI-SPAM & CHANNEL LOCK LOGIC ====================
 @bot.event
 async def on_message(message):
@@ -120,12 +130,16 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
 
-    # 👑 ওনার এবং 🌟 ভিআইপি ম্যানেজারদের জন্য ফুল চ্যাট বাইপাস
-    if message.author.id == OWNER_ID or message.author.id in VIP_MANAGERS:
+    # 👑 ওনার, 🌟 ভিআইপি ম্যানেজার এবং 🛡️ নির্দিষ্ট রোল আইডির মেম্বারদের জন্য ফুল চ্যাট বাইপাস
+    is_privileged = (message.author.id == OWNER_ID or 
+                     message.author.id in VIP_MANAGERS or 
+                     has_allowed_role(message.author))
+
+    if is_privileged:
         await bot.process_commands(message)
         return
 
-    # সার্ভার যদি !stop থাকে, সাধারণ মেম্বারদের মেসেজ ডিলিট হবে
+    # সার্ভার যদি !stop থাকে এবং প্রিভিলেজড মেম্বার না হয়, তাহলে সাধারণ মেম্বারদের মেসেজ ডিলিট হবে
     if IS_SERVER_STOPPED:
         try: await message.delete()
         except: pass
@@ -181,7 +195,6 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
                 else:
                     return portal_name, "Registered 🎉", True
             else:
-                # যদি সার্ভার কোনো মেসেজ রিটার্ন করে যা অলরেডি ক্লেইমড নির্দেশ করে
                 if "already" in lowered_res or "exist" in lowered_res:
                     return portal_name, "Already Claimed ⚠️", False
                 return portal_name, f"Bypass Error ({response.status}) ❌", False
@@ -195,14 +208,19 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
 async def free(ctx, uid: str):
     global IS_SERVER_STOPPED
     
-    # ইউজার ওনার বা ভিআইপি না হলে এবং সার্ভার লক থাকলে কমান্ড ব্লক
-    if IS_SERVER_STOPPED and ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
+    # চেক করা হচ্ছে ইউজার ওনার, ভিআইপি বা অনুমোদিত রোল আইডির কি না
+    is_privileged = (ctx.author.id == OWNER_ID or 
+                     ctx.author.id in VIP_MANAGERS or 
+                     has_allowed_role(ctx.author))
+
+    # সার্ভার লক থাকলে এবং প্রিভিলেজড ইউজার না হলে কমান্ড ব্লক
+    if IS_SERVER_STOPPED and not is_privileged:
         return
 
     if not (uid.isdigit() and 8 <= len(uid) <= 11):
         embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
         msg = await ctx.send(embed=embed)
-        if IS_SERVER_STOPPED:  # লক থাকলে ৫ সেকেন্ড পর মেসেজ ডিলিট
+        if IS_SERVER_STOPPED:  # ⏱️ লক থাকলে অ্যাডমিনদের মেসেজ ৫ সেকেন্ড পর ডিলিট
             await asyncio.sleep(5)
             try: await ctx.message.delete()
             except: pass
@@ -222,7 +240,11 @@ async def free(ctx, uid: str):
                     expiry = info.get("expiry", 0)
                     if expiry > now:
                         embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active and linked to your account.", color=0xffa500)
-                        await ctx.send(embed=embed)
+                        msg_exist = await ctx.send(embed=embed)
+                        if IS_SERVER_STOPPED:
+                            await asyncio.sleep(5)
+                            try: await ctx.message.delete(); await msg_exist.delete()
+                            except: pass
                         return
                 else:
                     embed = discord.Embed(
@@ -237,7 +259,11 @@ async def free(ctx, uid: str):
                     )
                     embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else bot.user.avatar.url)
                     embed.set_footer(text="🤖 NHE Premium Security Slot Lock")
-                    await ctx.send(embed=embed)
+                    msg_limit = await ctx.send(embed=embed)
+                    if IS_SERVER_STOPPED:
+                        await asyncio.sleep(5)
+                        try: await ctx.message.delete(); await msg_limit.delete()
+                        except: pass
                     return
 
     if uid in data:
@@ -257,7 +283,6 @@ async def free(ctx, uid: str):
     )
     msg = await ctx.send(embed=loading_embed)
 
-    # ৩ নম্বর পোর্টাল রিমুভ করে দেওয়া হয়েছে, এখন শুধু ১ ও ২ নম্বর একটিভ
     portal1_url = "https://excheatsofficial.xyz/portal/59e63dd8193a762c"
     portal2_url = "https://www.anikxcheatx.com/free/bd45d206"
 
@@ -311,7 +336,6 @@ async def free(ctx, uid: str):
             except: pass
         return
 
-    # টাইমিং এক্সপায়ারি সেটআপ
     expiry_duration = 259200 if status_dict.get("Secure Route Bravo 🛡️") == "Registered 🎉" else 86400
     expiry = now + expiry_duration
 
@@ -335,7 +359,7 @@ async def free(ctx, uid: str):
     embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
     await msg.edit(embed=embed)
 
-    # ⏱️ সার্ভার লক থাকা অবস্থায় ভিআইপি মেম্বার কমান্ড দিলে ৫ সেকেন্ড পর সব মেসেজ ডিলিট হবে
+    # 🔥 [UPDATED] সাকসেসফুল মেসেজও এখন !stop মুডে ৫ সেকেন্ড পর অটো ডিলিট হবে
     if IS_SERVER_STOPPED:
         await asyncio.sleep(5)
         try: await ctx.message.delete(); await msg.delete()
@@ -346,7 +370,11 @@ async def free(ctx, uid: str):
 @bot.command()
 async def remove(ctx, uid: str):
     global IS_SERVER_STOPPED
-    if IS_SERVER_STOPPED and ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
+    is_privileged = (ctx.author.id == OWNER_ID or 
+                     message.author.id in VIP_MANAGERS or 
+                     has_allowed_role(ctx.author))
+
+    if IS_SERVER_STOPPED and not is_privileged:
         return
 
     async with file_lock:
@@ -364,7 +392,11 @@ async def remove(ctx, uid: str):
                         color=0xff0000
                     )
                     embed.set_footer(text="🤖 Device Authorization Security")
-                    await ctx.send(embed=embed)
+                    msg_deny = await ctx.send(embed=embed)
+                    if IS_SERVER_STOPPED:
+                        await asyncio.sleep(5)
+                        try: await ctx.message.delete(); await msg_deny.delete()
+                        except: pass
                     return
             
             del data[uid]
@@ -383,6 +415,8 @@ async def remove(ctx, uid: str):
     
     embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
     msg = await ctx.send(embed=embed)
+    
+    # 🔥 !stop মুডে !remove কমান্ডের বট রেসপন্সও ৫ সেকেন্ড পর ডিলিট হবে
     if IS_SERVER_STOPPED:
         await asyncio.sleep(5)
         try: await ctx.message.delete(); await msg.delete()
@@ -400,9 +434,11 @@ async def stop(ctx):
     except: pass
 
     try:
+        # সাধারণ রোলগুলোর মেসেজ পারমিশন লক করা হচ্ছে
         for overwrite_target in ctx.channel.overwrites.keys():
-            if isinstance(overwrite_target, discord.Role) and overwrite_target.permissions.administrator:
-                continue
+            if isinstance(overwrite_target, discord.Role):
+                if overwrite_target.permissions.administrator or overwrite_target.id in ALLOWED_ROLE_IDS:
+                    continue
             
             overwrite = ctx.channel.overwrites_for(overwrite_target)
             overwrite.send_messages = False
@@ -412,10 +448,26 @@ async def stop(ctx):
         everyone_overwrite.send_messages = False
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
         
+        # ওনার এবং ভিআইপি ভাইদের আইডিকে ডিরেক্ট পারমিশন অন করা হচ্ছে
+        special_users = [OWNER_ID] + VIP_MANAGERS
+        for user_id in special_users:
+            member = ctx.guild.get_member(user_id)
+            if member:
+                user_overwrite = ctx.channel.overwrites_for(member)
+                user_overwrite.send_messages = True
+                await ctx.channel.set_permissions(member, overwrite=user_overwrite)
+
+        # নির্দিষ্ট রোল আইডি দুটিকে চ্যানেলে মেসেজ দেওয়ার অনুমতি দেওয়া হচ্ছে
+        for role_id in ALLOWED_ROLE_IDS:
+            role = ctx.guild.get_role(role_id)
+            if role:
+                role_overwrite = ctx.channel.overwrites_for(role)
+                role_overwrite.send_messages = True
+                await ctx.channel.set_permissions(role, overwrite=role_overwrite)
+        
     except Exception as e:
         print(f"❌ Failed to modify all roles permissions: {e}")
 
-    # 🎯 আপনার রিকোয়েস্টের সমস্ত পুরোনো নোটিশ মেসেজ + বড় হাতের নতুন লাইন ও ৩ জন অনার-ম্যানেজারদের আইডি লিংক
     embed = discord.Embed(
         title="🔒 NHE PREMIUM CLUSTER TERMINATED",
         description=(
@@ -424,7 +476,7 @@ async def stop(ctx):
             "Dear **NHE Members & All Roles**, this channel has been completely locked by the Administrator.\n"
             "All message-sending capabilities have been revoked for every role group.\n\n"
             "🌟 **Authorized System Personnel:**\n"
-            "👑 **Owner / Admin:** <@1483917215349735674>\n"
+            "👑 **System Authority:** `NHE TEAM`\n"
             "👤 **VIP Manager 1 (KESMAT):** <@1464861365645607027>\n"
             "👤 **VIP Manager 2 (ROHAN):** <@1100273442894401616>\n\n"
             "> **Notice:** The system is going under routine database sync or temporary pause. "
@@ -446,6 +498,7 @@ async def on(ctx):
     except: pass
 
     try:
+        # সবার পারমিশন আগের মতো রিলিজ (True) করে দেওয়া হচ্ছে
         for overwrite_target in ctx.channel.overwrites.keys():
             overwrite = ctx.channel.overwrites_for(overwrite_target)
             overwrite.send_messages = True
@@ -454,6 +507,19 @@ async def on(ctx):
         everyone_overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
         everyone_overwrite.send_messages = True
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
+        
+        # স্পেশাল মেম্বার ও আলাদা রোল আইডি ওভাররাইটগুলো ক্লিয়ার করে ডিফল্ট করা হচ্ছে
+        special_users = [OWNER_ID] + VIP_MANAGERS
+        for user_id in special_users:
+            member = ctx.guild.get_member(user_id)
+            if member:
+                await ctx.channel.set_permissions(member, overwrite=None)
+
+        for role_id in ALLOWED_ROLE_IDS:
+            role = ctx.guild.get_role(role_id)
+            if role:
+                await ctx.channel.set_permissions(role, overwrite=None)
+                
     except Exception as e:
         print(f"❌ Failed to reset all roles permissions: {e}")
 
@@ -538,7 +604,12 @@ async def info(ctx):
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
     
     embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
-    await ctx.send(embed=embed)
+    msg = await ctx.send(embed=embed)
+    
+    if IS_SERVER_STOPPED:
+        await asyncio.sleep(5)
+        try: await ctx.message.delete(); await msg.delete()
+        except: pass
 
 @bot.command()
 async def post(ctx):
