@@ -102,40 +102,48 @@ def run_server():
 async def on_ready():
     bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 Full Bypass Headers & Anti-Spam Running. Status: SECURE 🟢")
+    print("🌐 Channel Lock & Anti-Spam Running. Status: SECURE 🟢")
 
-# ==================== 🛡️ ANTI-SPAM AUTO DELETE LOGIC ====================
+# ==================== 🛡️ ANTI-SPAM & CHANNEL LOCK LOGIC ====================
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.id == CHANNEL_ID:
-        valid_commands = ["!free", "!remove", "!info", "!post"]
-        content = message.content.strip()
-        
-        is_valid = any(content.startswith(cmd) for cmd in valid_commands)
-        
-        if not is_valid:
+    # 🔒 চ্যানেল লক: নির্দিষ্ট কাজের চ্যানেল ছাড়া অন্য সব চ্যানেলে বট সম্পূর্ণ নিষ্ক্রিয় থাকবে
+    if message.channel.id != CHANNEL_ID:
+        return
+
+    # 👑 ওনার আইডির জন্য চেক রুট বাইপাস (মেসেজ ডিলিট হবে না এবং ওয়ার্নিংও আসবে না)
+    if message.author.id == OWNER_ID:
+        await bot.process_commands(message)
+        return
+
+    valid_commands = ["!free", "!remove", "!info", "!post"]
+    content = message.content.strip()
+    
+    is_valid = any(content.startswith(cmd) for cmd in valid_commands)
+    
+    if not is_valid:
+        try:
+            await message.delete()
+            warn_msg = await message.channel.send(f"⚠️ {message.author.mention}, **Only working bot commands are allowed here!**")
+            await asyncio.sleep(3)
+            await warn_msg.delete()
+        except Exception as e:
+            print(f"❌ [Anti-Spam] Failed to delete message: {e}")
+        return
+
+    if content.startswith("!post") or content.startswith("!remove"):
+        if message.author.id != OWNER_ID:
             try:
                 await message.delete()
-                warn_msg = await message.channel.send(f"⚠️ {message.author.mention}, **Only working bot commands are allowed here!**")
-                await asyncio.sleep(3)
+                warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
+                await asyncio.sleep(4)
                 await warn_msg.delete()
-            except Exception as e:
-                print(f"❌ [Anti-Spam] Failed to delete message: {e}")
+            except Exception:
+                pass
             return
-
-        if content.startswith("!post") or content.startswith("!remove"):
-            if message.author.id != OWNER_ID:
-                try:
-                    await message.delete()
-                    warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
-                    await asyncio.sleep(4)
-                    await warn_msg.delete()
-                except Exception:
-                    pass
-                return
 
     await bot.process_commands(message)
 
@@ -197,7 +205,7 @@ async def free(ctx, uid: str):
 
     form_data = {"uid": uid, "hardware_uid": uid}
     
-    # ৩ নম্বর রুটের (Charlie) হেডার্সকে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
+    # ৩ নম্বর রুটের (Charlie) হেডারส์কে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
     headers_charlie = {
         "User-Agent": random.choice(USER_AGENTS),  # প্রতিবার সম্পূর্ণ আলাদা ব্রাউজার শো করবে
         "Accept": "application/json, text/plain, */*",
