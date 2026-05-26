@@ -103,7 +103,7 @@ def run_server():
 async def on_ready():
     bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 Channel Lock & Anti-Spam Running. Status: SECURE 🟢")
+    print("🌐 Channel Lock & Admin Guard Running. Status: SECURE 🟢")
 
 # ==================== 🛡️ ANTI-SPAM & CHANNEL LOCK LOGIC ====================
 @bot.event
@@ -114,6 +114,7 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
 
+    # 👑 ওনার আইডির জন্য ফুল বাইপাস (সব কমান্ড ও নরমাল চ্যাট কাজ করবে)
     if message.author.id == OWNER_ID:
         await bot.process_commands(message)
         return
@@ -134,15 +135,14 @@ async def on_message(message):
         return
 
     if content.startswith("!post"):
-        if message.author.id != OWNER_ID:
-            try:
-                await message.delete()
-                warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
-                await asyncio.sleep(4)
-                await warn_msg.delete()
-            except Exception:
-                pass
-            return
+        try:
+            await message.delete()
+            warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
+            await asyncio.sleep(4)
+            await warn_msg.delete()
+        except Exception:
+            pass
+        return
 
     await bot.process_commands(message)
 
@@ -159,17 +159,20 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
             kwargs = {"data": data}
 
         async with bot.http_session.post(url, headers=headers, timeout=6, **kwargs) as response:
+            res_text = await response.text()
+            lowered_res = res_text.lower()
+            
             if response.status in [200, 201]:
-                res_text = await response.text()
-                lowered_res = res_text.lower()
-                
-                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত"]
+                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false"]
                 if any(x in lowered_res for x in block_keywords):
                     return portal_name, "Already Claimed ⚠️", False
                 else:
                     return portal_name, "Registered 🎉", True
             else:
-                return portal_name, f"Bypass Link Error ({response.status}) ❌", False
+                # যদি সার্ভার কোনো মেসেজ রিটার্ন করে যা অলরেডি ক্লেইমড নির্দেশ করে
+                if "already" in lowered_res or "exist" in lowered_res:
+                    return portal_name, "Already Claimed ⚠️", False
+                return portal_name, f"Bypass Error ({response.status}) ❌", False
     except asyncio.TimeoutError:
         return portal_name, "Gateway Timeout 🔌", False
     except Exception:
@@ -187,7 +190,6 @@ async def free(ctx, uid: str):
         data = load_data()
     now = time.time()
     
-    # 🔒 1 ID = 1 UID LIMIT LOGIC FOR USERS (Owner Bypassed)
     if ctx.author.id != OWNER_ID:
         for existing_uid, info in data.items():
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
@@ -198,7 +200,6 @@ async def free(ctx, uid: str):
                         await ctx.send(embed=embed)
                         return
                 else:
-                    # 🔔 কাস্টমাইজড ডিভাইস লিমিট এরর মেসেজ (কারেন্ট UID সহ)
                     embed = discord.Embed(
                         title="🚫 Device Limit Exceeded",
                         description=(
@@ -217,7 +218,7 @@ async def free(ctx, uid: str):
     if uid in data:
         expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
         if expiry > now:
-            embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the cluster database.", color=0xffa500)
+            embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the database.", color=0xffa500)
             await ctx.send(embed=embed)
             return
 
@@ -231,28 +232,28 @@ async def free(ctx, uid: str):
     portal2_url = "https://www.anikxcheatx.com/free/bd45d206"
     portal3_url = "http://92.118.206.166:30022/NAZMUL%20EXE/free_access"
 
+    # সাধারণ ফরম ডাটা (১ ও ২ নম্বর পোর্টালের জন্য)
     form_data = {"uid": uid, "hardware_uid": uid}
+    
+    # 🎯 ৩ নম্বর পোর্টালের জন্য ১০০% পারফেক্ট অপ্টিমাইজড JSON পে-লোড ও হেডার স্ট্রাকচার
+    charlie_payload = {
+        "uid": str(uid),
+        "id": str(uid)
+    }
     
     headers_charlie = {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
-        "Content-Type": "application/json;charset=UTF-8",
+        "Content-Type": "application/json",
         "Origin": "http://92.118.206.166:30022",
         "Referer": "http://92.118.206.166:30022/NAZMUL%20EXE/",
-        "Connection": "keep-alive",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin"
+        "Connection": "keep-alive"
     }
 
     task1 = post_to_portal(portal1_url, form_data, {"Referer": portal1_url}, "Secure Route Alpha 🔒", is_json=False)
     task2 = post_to_portal(portal2_url, form_data, {"Referer": portal2_url}, "Secure Route Bravo 🛡️", is_json=False)
-    task3 = post_to_portal(portal3_url, form_data, headers_charlie, "Secure Route Charlie ⚡", is_json=True)
+    task3 = post_to_portal(portal3_url, charlie_payload, headers_charlie, "Secure Route Charlie ⚡", is_json=True)
 
     results = await asyncio.gather(task1, task2, task3)
 
@@ -291,6 +292,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         return
 
+    # টাইমিং এক্সপায়ারি সেটআপ
     expiry_duration = 259200 if status_dict.get("Secure Route Bravo 🛡️") == "Registered 🎉" else 86400
     expiry = now + expiry_duration
 
@@ -340,7 +342,7 @@ async def remove(ctx, uid: str):
             save_data(data)
             embed = discord.Embed(
                 title="🗑️ Authorization Revoked",
-                description=f"UID `{uid}` has been successfully unlinked and cleared from the master cluster!\n\nYour slot is now **empty** and ready for a new registration.",
+                description=f"UID `{uid}` has been successfully unlinked and cleared from the master database!\n\nYour slot is now **empty** and ready for a new registration.",
                 color=0x00ff00
             )
         else:
@@ -352,6 +354,109 @@ async def remove(ctx, uid: str):
     
     embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
     await ctx.send(embed=embed)
+
+# ==================== 👑 ADVANCED EXCLUSIVE OWNER COMMANDS ====================
+
+@bot.command()
+async def stop(ctx):
+    if ctx.author.id != OWNER_ID: return
+    
+    try: await ctx.message.delete()
+    except: pass
+
+    try:
+        for overwrite_target in ctx.channel.overwrites.keys():
+            if isinstance(overwrite_target, discord.Role) and overwrite_target.permissions.administrator:
+                continue
+            
+            overwrite = ctx.channel.overwrites_for(overwrite_target)
+            overwrite.send_messages = False
+            await ctx.channel.set_permissions(overwrite_target, overwrite=overwrite)
+            
+        everyone_overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        everyone_overwrite.send_messages = False
+        await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
+        
+    except Exception as e:
+        print(f"❌ Failed to modify all roles permissions: {e}")
+
+    embed = discord.Embed(
+        title="🔒 NHE PREMIUM CLUSTER TERMINATED",
+        description=(
+            "### 🛑 Channel Status: CHAT OVERRIDE OFF\n\n"
+            "Dear **NHE Members & All Roles**, this channel has been completely locked by the Administrator.\n"
+            "All message-sending capabilities have been revoked for every role group.\n\n"
+            "> **Notice:** The system is going under routine database sync or temporary pause. "
+            "Please wait patiently until the Owner reactivates the terminal grid. 🚀"
+        ),
+        color=0xff1111
+    )
+    if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
+    embed.set_footer(text="👑 System Guard Protocol — NHE Team")
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def on(ctx):
+    if ctx.author.id != OWNER_ID: return
+    
+    try: await ctx.message.delete()
+    except: pass
+
+    try:
+        for overwrite_target in ctx.channel.overwrites.keys():
+            overwrite = ctx.channel.overwrites_for(overwrite_target)
+            overwrite.send_messages = True
+            await ctx.channel.set_permissions(overwrite_target, overwrite=overwrite)
+            
+        everyone_overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        everyone_overwrite.send_messages = True
+        await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
+    except Exception as e:
+        print(f"❌ Failed to reset all roles permissions: {e}")
+
+    embed = discord.Embed(
+        title="🚀 TERMINAL SYSTEM ONLINE",
+        description=(
+            "### 🟢 Channel Status: OPEN FOR ALL ROLES\n\n"
+            "The **NHE Whitelist Terminal** has been successfully unlocked by the Owner!\n"
+            "All members and role groups can now run `!free [UID]` or `!remove [UID]` commands as usual."
+        ),
+        color=0x00ff00
+    )
+    if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
+    embed.set_footer(text="👑 Active Authorization Mode — NHE Team")
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def allremove(ctx):
+    if ctx.author.id != OWNER_ID: return
+    
+    try: await ctx.message.delete()
+    except: pass
+
+    async with file_lock:
+        data = load_data()
+        
+        uid_list_text = ""
+        if data:
+            for count, (u, info) in enumerate(data.items(), 1):
+                discord_mention = f"<@{info.get('discord_id')}>" if isinstance(info, dict) else "Legacy/Unknown"
+                uid_list_text += f"**{count}.** UID: `{u}` ➔ Linked to: {discord_mention}\n"
+        else:
+            uid_list_text = "*No active UIDs found. Database is already clear!*"
+
+        save_data({})
+
+    embed = discord.Embed(
+        title="💥 CRITICAL RESET: ALL AUTHORIZATIONS REVOKED",
+        description="Every single whitelist instance has been successfully purged from the database cluster layer.",
+        color=0xff0000
+    )
+    embed.add_field(name="📋 Removed UIDs List", value=uid_list_text, inline=False)
+    embed.set_footer(text="👑 Master Clearance Command Issued")
+    await ctx.send(embed=embed)
+
+# =====================================================================
      
 @bot.command()
 async def info(ctx):
