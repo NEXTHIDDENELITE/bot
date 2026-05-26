@@ -84,7 +84,8 @@ def handle_requests():
     if not uid: return "missing_uid", 200
 
     if uid in data:
-        if now < data[uid]: return "active", 200  
+        expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
+        if now < expiry: return "active", 200  
         else: return "expired", 200
             
     return "not_whitelisted", 200
@@ -110,11 +111,9 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # 🔒 চ্যানেল লক: নির্দিষ্ট কাজের চ্যানেল ছাড়া অন্য সব চ্যানেলে বট সম্পূর্ণ নিষ্ক্রিয় থাকবে
     if message.channel.id != CHANNEL_ID:
         return
 
-    # 👑 ওনার আইডির জন্য চেক রুট বাইপাস (মেসেজ ডিলিট হবে না এবং ওয়ার্নিংও আসবে না)
     if message.author.id == OWNER_ID:
         await bot.process_commands(message)
         return
@@ -134,7 +133,7 @@ async def on_message(message):
             print(f"❌ [Anti-Spam] Failed to delete message: {e}")
         return
 
-    if content.startswith("!post") or content.startswith("!remove"):
+    if content.startswith("!post"):
         if message.author.id != OWNER_ID:
             try:
                 await message.delete()
@@ -188,10 +187,39 @@ async def free(ctx, uid: str):
         data = load_data()
     now = time.time()
     
-    if uid in data and data[uid] > now:
-        embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the cluster database.", color=0xffa500)
-        await ctx.send(embed=embed)
-        return
+    # 🔒 1 ID = 1 UID LIMIT LOGIC FOR USERS (Owner Bypassed)
+    if ctx.author.id != OWNER_ID:
+        for existing_uid, info in data.items():
+            if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
+                if existing_uid == uid:
+                    expiry = info.get("expiry", 0)
+                    if expiry > now:
+                        embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active and linked to your account.", color=0xffa500)
+                        await ctx.send(embed=embed)
+                        return
+                else:
+                    # 🔔 কাস্টমাইজড ডিভাইস লিমিট এরর মেসেজ (কারেন্ট UID সহ)
+                    embed = discord.Embed(
+                        title="🚫 Device Limit Exceeded",
+                        description=(
+                            f"Hey {ctx.author.mention}, you can only manage **1 UID per Discord account**!\n\n"
+                            f"**🔒 Currently Linked UID:** `{existing_uid}`\n\n"
+                            f"If you want to use a different UID, you must remove your current session first by typing:\n"
+                            f"`!remove {existing_uid}`"
+                        ),
+                        color=0xff3333
+                    )
+                    embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else bot.user.avatar.url)
+                    embed.set_footer(text="🤖 NHE Premium Security Slot Lock")
+                    await ctx.send(embed=embed)
+                    return
+
+    if uid in data:
+        expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
+        if expiry > now:
+            embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the cluster database.", color=0xffa500)
+            await ctx.send(embed=embed)
+            return
 
     loading_embed = discord.Embed(
         description=f"⏳ Processing UID: `{uid}` across encrypted failover routes...",
@@ -205,9 +233,8 @@ async def free(ctx, uid: str):
 
     form_data = {"uid": uid, "hardware_uid": uid}
     
-    # ৩ নম্বর রুটের (Charlie) হেডারส์কে সম্পূর্ণ ডাইনামিক এবং মানুষের মতো ব্রাউজিং প্যাটার্নে রূপান্তর
     headers_charlie = {
-        "User-Agent": random.choice(USER_AGENTS),  # প্রতিবার সম্পূর্ণ আলাদা ব্রাউজার শো করবে
+        "User-Agent": random.choice(USER_AGENTS),
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
         "Accept-Encoding": "gzip, deflate",
@@ -238,7 +265,7 @@ async def free(ctx, uid: str):
         if is_success: any_success = True
         if "Already" not in status_text: all_already_claimed = False
 
-    footer_text = "🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)"
+    footer_text = "🤖 Commands: !free [UID] | !info | !remove [UID]"
 
     if all_already_claimed:
         embed = discord.Embed(
@@ -269,12 +296,16 @@ async def free(ctx, uid: str):
 
     async with file_lock:
         data = load_data()
-        data[uid] = expiry
+        data[uid] = {
+            "expiry": expiry,
+            "discord_id": ctx.author.id
+        }
         save_data(data)
 
     embed = discord.Embed(title="✅ Access Granted & Whitelisted", color=0x00ff00)
     embed.add_field(name="Target UID", value=f"`{uid}`", inline=True)
     embed.add_field(name="Database Sync", value="Active 🟢", inline=True)
+    embed.add_field(name="Linked User", value=f"{ctx.author.mention}", inline=True)
     embed.add_field(name="Token Expiration", value=f"<t:{int(expiry)}:R>", inline=False)
     embed.add_field(name="📡 Distributed Grid Status", value="\n".join([f"**{name}:** `{status}`" for name, status in status_dict.items()]), inline=False)
     
@@ -287,19 +318,39 @@ async def free(ctx, uid: str):
 
 @bot.command()
 async def remove(ctx, uid: str):
-    if ctx.author.id != OWNER_ID:
-        return
-
     async with file_lock:
         data = load_data()
+        
         if uid in data:
+            info = data[uid]
+            
+            if ctx.author.id != OWNER_ID:
+                linked_id = info.get("discord_id") if isinstance(info, dict) else None
+                if linked_id != ctx.author.id:
+                    embed = discord.Embed(
+                        title="🔒 Action Denied",
+                        description=f"You do not own the whitelist for UID `{uid}`!\nYou cannot remove another member's device assignment.",
+                        color=0xff0000
+                    )
+                    embed.set_footer(text="🤖 Device Authorization Security")
+                    await ctx.send(embed=embed)
+                    return
+            
             del data[uid]
             save_data(data)
-            embed = discord.Embed(title="🗑️ Authorization Revoked", description=f"UID `{uid}` successfully cleared from main cluster.", color=0xff0000)
+            embed = discord.Embed(
+                title="🗑️ Authorization Revoked",
+                description=f"UID `{uid}` has been successfully unlinked and cleared from the master cluster!\n\nYour slot is now **empty** and ready for a new registration.",
+                color=0x00ff00
+            )
         else:
-            embed = discord.Embed(title="❌ Entry Non-Existent", description=f"UID `{uid}` could not be located inside active layers.", color=0xff0000)
+            embed = discord.Embed(
+                title="❌ Data Not Found",
+                description=f"UID `{uid}` could not be located inside any active database layers.",
+                color=0xff0000
+            )
     
-    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)")
+    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
     await ctx.send(embed=embed)
      
 @bot.command()
@@ -307,7 +358,13 @@ async def info(ctx):
     async with file_lock:
         data = load_data()
         now = time.time()
-        active_uids = {u: e for u, e in data.items() if e > now}
+        
+        active_uids = {}
+        for u, info in data.items():
+            expiry = info if isinstance(info, (int, float)) else info.get("expiry", 0)
+            if expiry > now:
+                active_uids[u] = info
+                
         if len(active_uids) != len(data): save_data(active_uids)
         
     embed = discord.Embed(title="📊 Cluster Diagnostics", color=0x3498db)
@@ -315,7 +372,7 @@ async def info(ctx):
     embed.add_field(name="System Runtime", value="Stable 🟢", inline=True)
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
     
-    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID] (Admin)")
+    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
     await ctx.send(embed=embed)
 
 @bot.command()
