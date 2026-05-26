@@ -19,7 +19,7 @@ DATA_FILE = "whitelist.json"
 CHANNEL_ID = 1507774505425178735 
 ANNOUNCEMENT_CHANNEL_ID = 1480775677505441813 
 
-# 👑 OWNER & DEVELOPER CONFIGURATION (Only this ID can use Admin Commands)
+# 👑 OWNER & DEVELOPER CONFIGURATION (Only this ID can use Admin/Info/Post/Vip Commands)
 OWNER_ID = 1483917215349735674
 
 # 🌟 VIP MANAGERS CONFIGURATION (Unlimited UIDs & Bypass Stop Lock)
@@ -130,47 +130,60 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
 
-    # 👑 ওনার, 🌟 ভিআইপি ম্যানেজার এবং 🛡️ নির্দিষ্ট রোল আইডির মেম্বারদের জন্য ফুল চ্যাট বাইপাস
+    # প্রিভিলেজড চেক (ওনার, ভিআইপি ম্যানেজার, অথবা এলাউড ২টা রোল আইডি)
     is_privileged = (message.author.id == OWNER_ID or 
                      message.author.id in VIP_MANAGERS or 
                      has_allowed_role(message.author))
 
-    if is_privileged:
-        await bot.process_commands(message)
-        return
-
-    # সার্ভার যদি !stop থাকে এবং প্রিভিলেজড মেম্বার না হয়, তাহলে সাধারণ মেম্বারদের মেসেজ ডিলিট হবে
-    if IS_SERVER_STOPPED:
-        try: await message.delete()
-        except: pass
-        return
-
-    valid_commands = ["!free", "!remove", "!info", "!post", "!vip"]
+    valid_commands = ["!free", "!remove", "!info", "!post", "!vip", "!stop", "!on", "!allremove"]
     content = message.content.strip()
-    
-    is_valid = any(content.startswith(cmd) for cmd in valid_commands)
-    
-    if not is_valid:
-        try:
-            await message.delete()
-            warn_msg = await message.channel.send(f"⚠️ {message.author.mention}, **Only working bot commands are allowed here!**")
-            await asyncio.sleep(3)
-            await warn_msg.delete()
-        except Exception as e:
-            print(f"❌ [Anti-Spam] Failed to delete message: {e}")
-        return
+    is_valid_command = any(content.startswith(cmd) for cmd in valid_commands)
 
-    if content.startswith("!post") or content.startswith("!vip"):
+    # 👑 🔥 [EXCLUSIVE OWNER COMMAND CHECK] !info, !post, !vip, !stop, !on, !allremove শুধু ওনার পারবে
+    owner_only_commands = ["!info", "!post", "!vip", "!stop", "!on", "!allremove"]
+    is_owner_command = any(content.startswith(cmd) for cmd in owner_only_commands)
+
+    if is_owner_command and message.author.id != OWNER_ID:
         try:
             await message.delete()
-            warn_msg = await message.channel.send(f"❌ {message.author.mention}, **You do not have permission to use admin commands!**")
+            warn_msg = await message.channel.send(f"❌ {message.author.mention}, **Only the Bot Owner can use this command!**")
             await asyncio.sleep(4)
             await warn_msg.delete()
         except Exception:
             pass
         return
 
-    await bot.process_commands(message)
+    # 🛑 ১. যখন সার্ভার !stop (লকড) থাকবে
+    if IS_SERVER_STOPPED:
+        if is_privileged:
+            # প্রিভিলেজড মেম্বাররা কমান্ড দিলে তাদের মেসেজ ৫ সেকেন্ড পর ডিলিট করার ব্যাকএন্ড টাস্ক
+            async def delete_user_msg(msg):
+                await asyncio.sleep(5)
+                try: await msg.delete()
+                except: pass
+            
+            bot.loop.create_task(delete_user_msg(message))
+            await bot.process_commands(message)
+        else:
+            try: await message.delete()
+            except: pass
+        return
+
+    # 🚀 ২. যখন সার্ভার !on (আনলকড) থাকবে
+    else:
+        # কমান্ড ছাড়া অন্য কিছু (সাধারণ চ্যাট/লিংক/স্প্যাম) দিলে সাথে সাথে ডিলিট হবে
+        if not is_valid_command:
+            try:
+                await message.delete()
+                warn_msg = await message.channel.send(f"⚠️ {message.author.mention}, **Only working bot commands are allowed here!**")
+                await asyncio.sleep(3)
+                await warn_msg.delete()
+            except Exception as e:
+                print(f"❌ [Anti-Spam] Failed to delete non-command message: {e}")
+            return
+
+        # ভ্যালিড কমান্ড হলে মেসেজ ডিলিট হবে না, নরমালি প্রসেস হবে
+        await bot.process_commands(message)
 
 # ==================== ADVANCED PARALLEL REQUEST ENGINE ====================
 async def post_to_portal(url, data, headers, portal_name, is_json=False):
@@ -208,22 +221,18 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
 async def free(ctx, uid: str):
     global IS_SERVER_STOPPED
     
-    # চেক করা হচ্ছে ইউজার ওনার, ভিআইপি বা অনুমোদিত রোল আইডির কি না
     is_privileged = (ctx.author.id == OWNER_ID or 
                      ctx.author.id in VIP_MANAGERS or 
                      has_allowed_role(ctx.author))
 
-    # সার্ভার লক থাকলে এবং প্রিভিলেজড ইউজার না হলে কমান্ড ব্লক
     if IS_SERVER_STOPPED and not is_privileged:
         return
 
     if not (uid.isdigit() and 8 <= len(uid) <= 11):
         embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
         msg = await ctx.send(embed=embed)
-        if IS_SERVER_STOPPED:  # ⏱️ লক থাকলে অ্যাডমিনদের মেসেজ ৫ সেকেন্ড পর ডিলিট
+        if IS_SERVER_STOPPED:  
             await asyncio.sleep(5)
-            try: await ctx.message.delete()
-            except: pass
             try: await msg.delete()
             except: pass
         return
@@ -232,7 +241,6 @@ async def free(ctx, uid: str):
         data = load_data()
     now = time.time()
     
-    # 🔓 ওনার এবং ভিআইপিদের জন্য ১টি UID-র লিমিট বাইপাস (Unlimited Slots)
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         for existing_uid, info in data.items():
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
@@ -243,7 +251,7 @@ async def free(ctx, uid: str):
                         msg_exist = await ctx.send(embed=embed)
                         if IS_SERVER_STOPPED:
                             await asyncio.sleep(5)
-                            try: await ctx.message.delete(); await msg_exist.delete()
+                            try: await msg_exist.delete()
                             except: pass
                         return
                 else:
@@ -262,7 +270,7 @@ async def free(ctx, uid: str):
                     msg_limit = await ctx.send(embed=embed)
                     if IS_SERVER_STOPPED:
                         await asyncio.sleep(5)
-                        try: await ctx.message.delete(); await msg_limit.delete()
+                        try: await msg_limit.delete()
                         except: pass
                     return
 
@@ -273,7 +281,7 @@ async def free(ctx, uid: str):
             msg = await ctx.send(embed=embed)
             if IS_SERVER_STOPPED:
                 await asyncio.sleep(5)
-                try: await ctx.message.delete(); await msg.delete()
+                try: await msg.delete()
                 except: pass
             return
 
@@ -302,7 +310,7 @@ async def free(ctx, uid: str):
         if is_success: any_success = True
         if "Already" not in status_text: all_already_claimed = False
 
-    footer_text = "🤖 Commands: !free [UID] | !info | !remove [UID]"
+    footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
 
     if all_already_claimed:
         embed = discord.Embed(
@@ -316,7 +324,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         if IS_SERVER_STOPPED:
             await asyncio.sleep(5)
-            try: await ctx.message.delete(); await msg.delete()
+            try: await msg.delete()
             except: pass
         return
 
@@ -332,7 +340,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         if IS_SERVER_STOPPED:
             await asyncio.sleep(5)
-            try: await ctx.message.delete(); await msg.delete()
+            try: await msg.delete()
             except: pass
         return
 
@@ -359,10 +367,9 @@ async def free(ctx, uid: str):
     embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
     await msg.edit(embed=embed)
 
-    # 🔥 [UPDATED] সাকসেসফুল মেসেজও এখন !stop মুডে ৫ সেকেন্ড পর অটো ডিলিট হবে
     if IS_SERVER_STOPPED:
         await asyncio.sleep(5)
-        try: await ctx.message.delete(); await msg.delete()
+        try: await msg.delete()
         except: pass
 
 # =====================================================================
@@ -371,7 +378,7 @@ async def free(ctx, uid: str):
 async def remove(ctx, uid: str):
     global IS_SERVER_STOPPED
     is_privileged = (ctx.author.id == OWNER_ID or 
-                     message.author.id in VIP_MANAGERS or 
+                     ctx.author.id in VIP_MANAGERS or 
                      has_allowed_role(ctx.author))
 
     if IS_SERVER_STOPPED and not is_privileged:
@@ -395,7 +402,7 @@ async def remove(ctx, uid: str):
                     msg_deny = await ctx.send(embed=embed)
                     if IS_SERVER_STOPPED:
                         await asyncio.sleep(5)
-                        try: await ctx.message.delete(); await msg_deny.delete()
+                        try: await msg_deny.delete()
                         except: pass
                     return
             
@@ -413,13 +420,12 @@ async def remove(ctx, uid: str):
                 color=0xff0000
             )
     
-    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
+    embed.set_footer(text="🤖 Commands: !free [UID] | !remove [UID]")
     msg = await ctx.send(embed=embed)
     
-    # 🔥 !stop মুডে !remove কমান্ডের বট রেসপন্সও ৫ সেকেন্ড পর ডিলিট হবে
     if IS_SERVER_STOPPED:
         await asyncio.sleep(5)
-        try: await ctx.message.delete(); await msg.delete()
+        try: await msg.delete()
         except: pass
 
 # ==================== 👑 ADVANCED EXCLUSIVE OWNER COMMANDS ====================
@@ -434,7 +440,6 @@ async def stop(ctx):
     except: pass
 
     try:
-        # সাধারণ রোলগুলোর মেসেজ পারমিশন লক করা হচ্ছে
         for overwrite_target in ctx.channel.overwrites.keys():
             if isinstance(overwrite_target, discord.Role):
                 if overwrite_target.permissions.administrator or overwrite_target.id in ALLOWED_ROLE_IDS:
@@ -448,7 +453,6 @@ async def stop(ctx):
         everyone_overwrite.send_messages = False
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
         
-        # ওনার এবং ভিআইপি ভাইদের আইডিকে ডিরেক্ট পারমিশন অন করা হচ্ছে
         special_users = [OWNER_ID] + VIP_MANAGERS
         for user_id in special_users:
             member = ctx.guild.get_member(user_id)
@@ -457,7 +461,6 @@ async def stop(ctx):
                 user_overwrite.send_messages = True
                 await ctx.channel.set_permissions(member, overwrite=user_overwrite)
 
-        # নির্দিষ্ট রোল আইডি দুটিকে চ্যানেলে মেসেজ দেওয়ার অনুমতি দেওয়া হচ্ছে
         for role_id in ALLOWED_ROLE_IDS:
             role = ctx.guild.get_role(role_id)
             if role:
@@ -498,7 +501,6 @@ async def on(ctx):
     except: pass
 
     try:
-        # সবার পারমিশন আগের মতো রিলিজ (True) করে দেওয়া হচ্ছে
         for overwrite_target in ctx.channel.overwrites.keys():
             overwrite = ctx.channel.overwrites_for(overwrite_target)
             overwrite.send_messages = True
@@ -508,7 +510,6 @@ async def on(ctx):
         everyone_overwrite.send_messages = True
         await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
         
-        # স্পেশাল মেম্বার ও আলাদা রোল আইডি ওভাররাইটগুলো ক্লিয়ার করে ডিফল্ট করা হচ্ছে
         special_users = [OWNER_ID] + VIP_MANAGERS
         for user_id in special_users:
             member = ctx.guild.get_member(user_id)
@@ -567,7 +568,7 @@ async def allremove(ctx):
 
 @bot.command()
 async def vip(ctx):
-    if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS: return
+    if ctx.author.id != OWNER_ID: return
     
     embed = discord.Embed(
         title="🌟 NHE VIP BROTHERS PANEL 🌟",
@@ -586,6 +587,8 @@ async def vip(ctx):
      
 @bot.command()
 async def info(ctx):
+    if ctx.author.id != OWNER_ID: return
+    
     async with file_lock:
         data = load_data()
         now = time.time()
@@ -603,18 +606,17 @@ async def info(ctx):
     embed.add_field(name="System Runtime", value="Stable 🟢", inline=True)
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
     
-    embed.set_footer(text="🤖 Commands: !free [UID] | !info | !remove [UID]")
+    embed.set_footer(text="🤖 Commands: !free [UID] | !remove [UID]")
     msg = await ctx.send(embed=embed)
     
     if IS_SERVER_STOPPED:
         await asyncio.sleep(5)
-        try: await ctx.message.delete(); await msg.delete()
+        try: await msg.delete()
         except: pass
 
 @bot.command()
 async def post(ctx):
-    if ctx.author.id != OWNER_ID:
-        return
+    if ctx.author.id != OWNER_ID: return
 
     try: await ctx.message.delete()
     except: pass
