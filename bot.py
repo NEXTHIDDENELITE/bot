@@ -59,47 +59,36 @@ def save_data(data):
     except Exception as e:
         print(f"❌ [File System] Error saving database: {e}")
 
-# ================= FLASK LOCAL SERVER PART =================
+# ================= FLASK SERVER PART (UNIVERSAL DNSPY OPTIMIZED) =================
 app = Flask('')
 
+# মূল ডোমেইন বা এপিআই লিংকে হিট করলেই সরাসরি টেক্সট আকারে সব একটিভ UID রিটার্ন করবে
 @app.route('/')
-def home():
-    return "🔥 NHE Bot Pro v2 is fully operational and alive! 🟢", 200
-
+@app.route('/api/active_uids', methods=['GET', 'POST'])
 @app.route('/api/uidipport', methods=['GET', 'POST'])
-@app.route('/api/certificate', methods=['GET', 'POST'])
 def handle_requests():
-    if 'certificate' in request.path:
-        return "true", 200
-
     data = load_data()
     now = time.time()
-    uid = None
-    
-    uid = request.args.get('uid') or request.form.get('uid')
-    if not uid:
-        uid = request.args.get('id') or request.args.get('user_id') or request.form.get('id')
+    active_list = []
 
-    if not uid:
-        try:
-            input_data = request.get_json(silent=True)
-            if input_data: uid = input_data.get('uid') or input_data.get('id')
-        except Exception: pass
-
-    if not uid:
-        try:
-            raw_data = request.data.decode('utf-8').strip()
-            if raw_data.isdigit(): uid = raw_data
-        except Exception: pass
-
-    if not uid: return "missing_uid", 200
-
-    if uid in data:
-        expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
-        if now < expiry: return "active", 200  
-        else: return "expired", 200
+    # ডেটাবেজ থেকে ভ্যালিড এবং একটিভ ইউআইডিগুলো ফিল্টার করা হচ্ছে
+    for uid, info in data.items():
+        if isinstance(info, dict):
+            expiry = info.get("expiry", 0)
+        else:
+            expiry = info
             
-    return "not_whitelisted", 200
+        if now < expiry:
+            active_list.append(str(uid).strip())
+
+    # প্লেইন টেক্সট ফাইল রেসপন্স জেনারেট করা হচ্ছে (যাতে dnSpy ফাইল ডাউনলোডার রিড করতে পারে)
+    response_text = "\n".join(active_list)
+    return response_text, 200, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
 
 def run_server():
     import logging
@@ -156,7 +145,7 @@ async def on_message(message):
     # 🛑 ১. যখন সার্ভার !stop (লকড) থাকবে
     if IS_SERVER_STOPPED:
         if is_privileged:
-            # প্রিভিলেজড মেম্বাররা কমান্ড দিলে তাদের মেসেজ ৫ সেকেন্ড পর ডিলিট করার ব্যাকএন্ড টাস্ক
+            # প্রিভিলেজড মেম্বাররা কমান্ড দিলে তাদের মেসেজ ৫ সেকেন্ড পর ডিলিট করার ব্যাকэন্ড টাস্ক
             async def delete_user_msg(msg):
                 await asyncio.sleep(5)
                 try: await msg.delete()
@@ -171,7 +160,7 @@ async def on_message(message):
 
     # 🚀 ২. যখন সার্ভার !on (আনলকড) থাকবে
     else:
-        # কমান্ড ছাড়া অন্য কিছু (সাধারণ চ্যাট/লিংক/স্প্যাম) দিলে সাথে সাথে ডিলিট হবে
+        # কমান্ড ছাড়া অন্য কিছু (সাধারণ চ্যাট/লিংক/স্প্যাম) দিলে সাথে সাথে ডিলিট হবে
         if not is_valid_command:
             try:
                 await message.delete()
@@ -265,7 +254,7 @@ async def free(ctx, uid: str):
                         ),
                         color=0xff3333
                     )
-                    embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else bot.user.avatar.url)
+                    if ctx.author.avatar: embed.set_thumbnail(url=ctx.author.avatar.url)
                     embed.set_footer(text="🤖 NHE Premium Security Slot Lock")
                     msg_limit = await ctx.send(embed=embed)
                     if IS_SERVER_STOPPED:
@@ -292,7 +281,7 @@ async def free(ctx, uid: str):
     msg = await ctx.send(embed=loading_embed)
 
     portal1_url = "https://excheatsofficial.xyz/portal/59e63dd8193a762c"
-    portal2_url = "https://www.anikxcheatx.com/free/bd45d206"
+    portal2_url = "https://www.anikxcheatx.0com/free/bd45d206"
 
     form_data = {"uid": uid, "hardware_uid": uid}
 
@@ -320,7 +309,7 @@ async def free(ctx, uid: str):
         )
         for name, status in status_dict.items():
             embed.add_field(name=name, value=f"`{status}`", inline=True)
-        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+        if ctx.author.avatar: embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url)
         await msg.edit(embed=embed)
         if IS_SERVER_STOPPED:
             await asyncio.sleep(5)
@@ -336,7 +325,7 @@ async def free(ctx, uid: str):
         )
         for name, status in status_dict.items():
             embed.add_field(name=name, value=f"`{status}`", inline=True)
-        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+        if ctx.author.avatar: embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url)
         await msg.edit(embed=embed)
         if IS_SERVER_STOPPED:
             await asyncio.sleep(5)
@@ -363,8 +352,7 @@ async def free(ctx, uid: str):
     embed.add_field(name="📡 Distributed Grid Status", value="\n".join([f"**{name}:** `{status}`" for name, status in status_dict.items()]), inline=False)
     
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
-    
-    embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+    if ctx.author.avatar: embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url)
     await msg.edit(embed=embed)
 
     if IS_SERVER_STOPPED:
