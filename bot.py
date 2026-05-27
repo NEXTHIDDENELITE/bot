@@ -3,9 +3,9 @@ from discord.ext import commands
 import json
 import time
 import os
-import asyncio              # For parallel thread execution
-from flask import Flask, request  # For the local whitelist server
-import threading                 # For running both the bot and server together
+import asyncio              # Parallel thread execution এর জন্য
+from flask import Flask, request  # লোকাল হোস্টিং ডেটাবেজ সার্ভারের জন্য
+import threading                 # বট এবং ফ্লাস্ক সার্ভার একসাথে চালানোর জন্য
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,7 +29,7 @@ ALLOWED_ROLE_IDS = [1480832209995698259, 1480836036916674632]
 # 🔒 Global Server Stop Status Tracker
 IS_SERVER_STOPPED = False
 
-# 🔒 File Lock to prevent JSON corruption when multi-users spam commands
+# 🔒 File Lock (মাল্টিপল ইউজার একসাথে কমান্ড দিলে ফাইল যেন করাপ্ট না হয়)
 file_lock = asyncio.Lock()
 
 def load_data():
@@ -49,6 +49,7 @@ def save_data(data):
 # ================= FLASK SERVER PART =================
 app = Flask('')
 
+# এখানে মেইন রুট ('/') সহ সব রুট একবারে হ্যান্ডেল করা হয়েছে, তাই এখন আর 'Not Found' আসবে না।
 @app.route('/')
 @app.route('/api/active_uids', methods=['GET', 'POST'])
 @app.route('/api/uidipport', methods=['GET', 'POST'])
@@ -173,7 +174,7 @@ async def free(ctx, uid: str):
         data = load_data()
     now = time.time()
     
-    # ডিভাইস লিমিট চেক (১টি অ্যাকাউন্টের জন্য ১টি ইউআইডি)
+    # ডিভাইস লিমিট চেক (১টি ডিসকর্ড অ্যাকাউন্টের জন্য ১টি ইউআইডি)
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         for existing_uid, info in data.items():
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
@@ -218,7 +219,7 @@ async def free(ctx, uid: str):
                 except: pass
             return
 
-    # ইউআরএল রিকোয়েস্টের ঝামেলা নেই, সরাসরি ২৪ ঘণ্টার (৮৬৪০০ সেকেন্ড) জন্য একটিভ হবে
+    # বাহ্যিক ইউআরএল রিকোয়েস্ট ছাড়া সরাসরি ২৪ ঘণ্টার (86400 সেকেন্ড) জন্য একটিভ হবে
     expiry_duration = 86400 
     expiry = now + expiry_duration
 
@@ -232,11 +233,11 @@ async def free(ctx, uid: str):
 
     embed = discord.Embed(title="✅ Access Granted & Whitelisted", color=0x00ff00)
     embed.add_field(name="Target UID", value=f"`{uid}`", inline=True)
-    embed.add_field(name="Database Sync", value="Active 🟢", inline=True)
+    embed.add_field(name="Database Sync", value="Local Active 🟢", inline=True)
     embed.add_field(name="Linked User", value=f"{ctx.author.mention}", inline=True)
     embed.add_field(name="Token Expiration", value=f"<t:{int(expiry)}:R>", inline=False)
     
-    footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
+    footer_text = "🤖 Local Database Bypass Active"
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
     if ctx.author.avatar: embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url)
     await ctx.send(embed=embed)
