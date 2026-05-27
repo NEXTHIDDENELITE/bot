@@ -30,48 +30,58 @@ ALLOWED_ROLE_IDS = [1480832209995698259, 1480836036916674632]
 IS_SERVER_STOPPED = False
 
 def load_data():
-    if not os.path.exists(DATA_FILE): return {}
+    if not os.path.exists(DATA_FILE): 
+        return {}
     try:
-        with open(DATA_FILE, "r") as f: 
-            return json.load(f)
-    except Exception:
-        print("⚠️ [File System] Whitelist JSON was corrupted or busy. Auto-resetting.")
+        with open(DATA_FILE, "r", encoding="utf-8") as f: 
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ [File System] Data load reset: {e}")
         return {}
 
 def save_data(data):
     try:
-        with open(DATA_FILE, "w") as f: 
-            json.dump(data, f, indent=4)
+        with open(DATA_FILE, "w", encoding="utf-8") as f: 
+            json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(f"❌ [File System] Error saving database: {e}")
 
-# ================= FLASK SERVER PART =================
+# ================= FLASK SERVER PART (C# FIX) =================
 app = Flask('')
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/api/active_uids', methods=['GET', 'POST'])
 @app.route('/api/uidipport', methods=['GET', 'POST'])
 def handle_requests():
-    # সরাসরি ফাইল থেকে একদম রিয়েল-টাইম ডেটা লোড করবে
     data = load_data()
     now = time.time()
     active_list = []
 
     for uid, info in data.items():
+        # ডেটা ফরম্যাট ডিকশনারি নাকি নরমাল টাইমস্ট্যাম্প তা চেক করছে
         if isinstance(info, dict):
             expiry = info.get("expiry", 0)
         else:
-            expiry = info
+            try:
+                expiry = float(info)
+            except:
+                expiry = 0
             
         if now < expiry:
             active_list.append(str(uid).strip())
 
-    response_text = "\n".join(active_list)
+    # C# WebClient.DownloadString এর জন্য ক্লিন রেসপন্স টেক্সট তৈরি
+    response_text = "\n".join(active_list) if active_list else ""
     
+    # 400 Error চিরতরে ফিক্স করার জন্য প্রফেশনাল রেসপন্স হেডার্স
     return response_text, 200, {
         'Content-Type': 'text/plain; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
@@ -88,13 +98,13 @@ def run_server():
 
 @bot.event
 async def on_ready():
-    print(f"🔥 NHE Bot Pro v3 (Anti-Stuck Connected) is online as {bot.user.name}!")
+    print(f"🔥 NHE Bot Pro v4 (Pure Stable) is online as {bot.user.name}!")
 
 def has_allowed_role(member):
     if not hasattr(member, 'roles'): return False
     return any(role.id in ALLOWED_ROLE_IDS for role in member.roles)
 
-# ==================== 🛡️ CLEANED ANTI-STUCK MESSAGE PROCESSOR ====================
+# ==================== 🛡️ ANTI-STUCK MESSAGE PROCESSOR ====================
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -107,7 +117,6 @@ async def on_message(message):
     valid_commands = ["!free", "!remove", "!info", "!post", "!vip", "!stop", "!on", "!allremove"]
     is_valid_command = any(content.startswith(cmd) for cmd in valid_commands)
 
-    # স্প্যাম বা ফালতু মেসেজ হলে সাথে সাথে ডিলিট, কোনো লকিং নেই
     if not is_valid_command:
         try: 
             await message.delete()
@@ -115,7 +124,6 @@ async def on_message(message):
             pass
         return
 
-    # কমান্ড প্রসেস করার জন্য বটের মেইন ইঞ্জিনে পাঠিয়ে দেওয়া হলো
     await bot.process_commands(message)
 
 # ==================== !FREE COMMAND ====================
@@ -130,6 +138,7 @@ async def free(ctx, uid: str):
     if IS_SERVER_STOPPED and not is_privileged:
         return
 
+    uid = uid.strip()
     if not (uid.isdigit() and 8 <= len(uid) <= 11):
         embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
         await ctx.send(embed=embed)
@@ -138,9 +147,9 @@ async def free(ctx, uid: str):
     data = load_data()
     now = time.time()
     
-    # ডিভাইস লিমিট চেক (১টি ডিসকর্ড অ্যাকাউন্টের জন্য ১টি ইউআইডি)
+    # ডিভাইস লিমিট চেক (১টি ডিসকورد অ্যাকাউন্টের জন্য ১টি ইউআইডি)
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
-        for existing_uid, info in data.items():
+        for existing_uid, info in list(data.items()):
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
                 if existing_uid == uid:
                     expiry = info.get("expiry", 0)
@@ -158,13 +167,14 @@ async def free(ctx, uid: str):
                     return
 
     if uid in data:
-        expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
+        info = data[uid]
+        expiry = info.get("expiry", 0) if isinstance(info, dict) else float(info)
         if expiry > now:
             embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in database.", color=0xffa500)
             await ctx.send(embed=embed)
             return
 
-    # সরাসরি ২৪ ঘণ্টার জন্য ফাইলে পুশ
+    # ২৪ ঘণ্টার জন্য বৈধতা
     expiry = now + 86400
     data[uid] = {
         "expiry": expiry,
@@ -192,6 +202,7 @@ async def remove(ctx, uid: str):
     if IS_SERVER_STOPPED and not is_privileged:
         return
 
+    uid = uid.strip()
     data = load_data()
     if uid in data:
         info = data[uid]
@@ -261,7 +272,7 @@ async def info(ctx):
     if ctx.author.id != OWNER_ID: return
     data = load_data()
     now = time.time()
-    active_count = len([u for u, info in data.items() if (info if isinstance(info, (int, float)) else info.get("expiry", 0)) > now])
+    active_count = len([u for u, info in data.items() if (info.get("expiry", 0) if isinstance(info, dict) else float(info)) > now])
         
     embed = discord.Embed(title="📊 Cluster Diagnostics", color=0x3498db)
     embed.add_field(name="Active Whitelists", value=f"`{active_count}`", inline=True)
