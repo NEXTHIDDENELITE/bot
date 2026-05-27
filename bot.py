@@ -46,16 +46,16 @@ def save_data(data):
     except Exception as e:
         print(f"❌ [File System] Error saving database: {e}")
 
-# ================= FLASK LOCAL SERVER PART =================
+# ================= FLASK LOCAL SERVER PART (FIXED FOR DNSPY) =================
 app = Flask('')
 
 @app.route('/')
 def home():
     return "🔥 NHE Bot Pro v2 is fully operational and alive! 🟢", 200
 
-# dnSpy প্যানেল ডাটা চেক করার জন্য এপিআই রুট
+# dnSpy প্যানেল সরাসরি এই রুটে হিট করে পুরো একটিভ লিস্টটি টেক্সট ফাইল আকারে ডাউনলোড করবে
+@app.route('/api/active_uids', methods=['GET', 'POST'])
 @app.route('/api/uidipport', methods=['GET', 'POST'])
-@app.route('/api/active_uids', methods=['GET', 'POST']) # dnSpy এর সাথে মিল রাখার জন্য অতিরিক্ত রুট
 @app.route('/api/certificate', methods=['GET', 'POST'])
 def handle_requests():
     if 'certificate' in request.path:
@@ -63,31 +63,23 @@ def handle_requests():
 
     data = load_data()
     now = time.time()
-    uid = request.args.get('uid') or request.form.get('uid')
-    
-    if not uid:
-        uid = request.args.get('id') or request.args.get('user_id') or request.form.get('id')
+    active_list = []
 
-    if not uid:
-        try:
-            input_data = request.get_json(silent=True)
-            if input_data: uid = input_data.get('uid') or input_data.get('id')
-        except Exception: pass
-
-    if not uid:
-        try:
-            raw_data = request.data.decode('utf-8').strip()
-            if raw_data.isdigit(): uid = raw_data
-        except Exception: pass
-
-    if not uid: return "missing_uid", 200
-
-    if uid in data:
-        expiry = data[uid] if isinstance(data[uid], (int, float)) else data[uid].get("expiry", 0)
-        if now < expiry: return "active", 200  
-        else: return "expired", 200
+    # ডাটাবেজ থেকে শুধুমাত্র একটিভ (যারা এক্সপায়ার হয়নি) UID গুলো আলাদা করা
+    for uid, info in data.items():
+        if isinstance(info, dict):
+            expiry = info.get("expiry", 0)
+        else:
+            expiry = info
             
-    return "not_whitelisted", 200
+        if now < expiry:
+            active_list.append(str(uid))
+
+    # প্যানেল যেভাবে রিড করে: প্রতিটি UID আলাদা লাইনে (Plain Text)
+    response_text = "\n".join(active_list)
+    
+    # রেসপন্স টাইপ plain text করে দেওয়া হলো যাতে dnSpy WebClient সহজে ফাইল রাইট করতে পারে
+    return response_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 def run_server():
     import logging
@@ -225,7 +217,7 @@ async def free(ctx, uid: str):
                 except: pass
             return
 
-    # বাইরের পোর্টাল ছাড়া সরাসরি নিজস্ব ডাটাবেজে ২৪ ঘণ্টার (৮৬৪০০ সেকেন্ড) জন্য হোয়াইটলিস্ট অ্যাক্সেস
+    # সরাসরি নিজস্ব ডাটাবেজে ২৪ ঘণ্টার (৮৬৪০০ সেকেন্ড) জন্য হোয়াইটলিস্ট অ্যাক্সেস
     expiry_duration = 86400 
     expiry = now + expiry_duration
 
