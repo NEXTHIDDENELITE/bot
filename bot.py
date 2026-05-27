@@ -49,39 +49,36 @@ def save_data(data):
     except Exception as e:
         print(f"❌ [File System] Error saving database: {e}")
 
-# ================= FLASK SERVER PART (C# FIX) =================
+# ================= FLASK SERVER PART (C# 400 ERROR FIXED) =================
 app = Flask('')
 
+# এখানে মেইন রুট '/' এবং '/api/active_uids' দুইটাকেই একসাথে ওপেন করে দেওয়া হয়েছে
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/api/active_uids', methods=['GET', 'POST'])
-@app.route('/api/uidipport', methods=['GET', 'POST'])
 def handle_requests():
     data = load_data()
     now = time.time()
     active_list = []
 
     for uid, info in data.items():
-        # ডেটা ফরম্যাট ডিকশনারি নাকি নরমাল টাইমস্ট্যাম্প তা চেক করছে
         if isinstance(info, dict):
             expiry = info.get("expiry", 0)
         else:
-            try:
-                expiry = float(info)
-            except:
-                expiry = 0
+            try: expiry = float(info)
+            except: expiry = 0
             
         if now < expiry:
             active_list.append(str(uid).strip())
 
-    # C# WebClient.DownloadString এর জন্য ক্লিন রেসপন্স টেক্সট তৈরি
-    response_text = "\n".join(active_list) if active_list else ""
+    # C# WebClient যেন সরাসরি রিড করতে পারে তার জন্য ক্লিন টেক্সট রেসপন্স
+    response_text = "\n".join(active_list)
     
-    # 400 Error চিরতরে ফিক্স করার জন্য প্রফেশনাল রেসপন্স হেডার্স
+    # সব ধরনের ৪০০ ব্যাড রিকোয়েস্ট এবং ক্যাশিং প্রবলেম ব্লক করার বুলেটপ্রুফ হেডার্স
     return response_text, 200, {
         'Content-Type': 'text/plain; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': '*',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
@@ -98,7 +95,7 @@ def run_server():
 
 @bot.event
 async def on_ready():
-    print(f"🔥 NHE Bot Pro v4 (Pure Stable) is online as {bot.user.name}!")
+    print(f"🔥 NHE Bot Pro v5 is online as {bot.user.name}!")
 
 def has_allowed_role(member):
     if not hasattr(member, 'roles'): return False
@@ -147,7 +144,6 @@ async def free(ctx, uid: str):
     data = load_data()
     now = time.time()
     
-    # ডিভাইস লিমিট চেক (১টি ডিসকورد অ্যাকাউন্টের জন্য ১টি ইউআইডি)
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         for existing_uid, info in list(data.items()):
             if isinstance(info, dict) and info.get("discord_id") == ctx.author.id:
@@ -174,7 +170,6 @@ async def free(ctx, uid: str):
             await ctx.send(embed=embed)
             return
 
-    # ২৪ ঘণ্টার জন্য বৈধতা
     expiry = now + 86400
     data[uid] = {
         "expiry": expiry,
