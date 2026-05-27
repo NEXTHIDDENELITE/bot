@@ -235,7 +235,7 @@ async def free(ctx, uid: str):
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
-    # ১ ডিভাইস লিমিট চেক (মেসেজ কাস্টমাইজড সহ)
+    # ১ ডিভাইস লিমিট চেক (কাস্টমাইজড নোটিশ মেসেজ সহ)
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         cursor.execute("SELECT uid, expiry FROM whitelist WHERE discord_id = ?", (ctx.author.id,))
         existing = cursor.fetchone()
@@ -296,19 +296,19 @@ async def free(ctx, uid: str):
 
     any_success = False
     all_already_claimed = True
-    has_bravo_success = False
+    has_alpha_success = False
 
     for portal_name, status_text, is_success in results:
         if is_success: 
             any_success = True
             if portal_name == "Route Alpha 🛡️":
-                has_bravo_success = True
+                has_alpha_success = True
         if "Already" not in status_text: 
             all_already_claimed = False
 
     footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
 
-    # ওয়ান-লাইন গ্রিড স্ট্যাটাস ডিসিশন
+    # ওয়ান-লাইন গ্রিড স্ট্যাটাস ডিসিশন লজিক
     if any_success:
         grid_status = "Registered 🎉"
     else:
@@ -329,7 +329,7 @@ async def free(ctx, uid: str):
         return
 
     # এক্সপায়ারি টাইম সেটআপ
-    expiry_duration = 259200 if has_bravo_success else 86400
+    expiry_duration = 259200 if has_alpha_success else 86400
     expiry = now + expiry_duration
 
     # ডাটাবেজে ইউআইডি সফলভাবে সেভ করা
@@ -355,11 +355,19 @@ async def free(ctx, uid: str):
 @bot.command()
 async def url(ctx):
     if ctx.author.id != OWNER_ID: return
+    
+    # ওনার সিকিউরিটির জন্য মেইন চ্যানেলের মেসেজটি সাথে সাথে ডিলিট করা
     try: await ctx.message.delete()
     except: pass
 
-    loading_embed = discord.Embed(description="⏳ Checking portal status... Please wait.", color=discord.Color.orange())
-    status_msg = await ctx.send(embed=loading_embed)
+    # ওনারের ইনবক্সে (DM) মেসেজ পাঠানোর প্রসেস শুরু
+    try:
+        status_msg = await ctx.author.send(embed=discord.Embed(description="⏳ Checking portal status... Please wait.", color=discord.Color.orange()))
+    except discord.Forbidden:
+        warn = await ctx.send(f"⚠️ {ctx.author.mention}, আপনার DM ব্লক করা! দয়া করে ইনবক্স ওপেন করুন যাতে ডায়াগনস্টিক ডেটা গোপনে পাঠানো যায়।")
+        await asyncio.sleep(5)
+        await warn.delete()
+        return
 
     embed = discord.Embed(title="🌐 Portal URL Status Diagnostic", color=0x3498db)
     
@@ -368,16 +376,15 @@ async def url(ctx):
 
     for name, url in PORTAL_URLS.items():
         try:
-            # হালকা রিকোয়েস্ট পাঠিয়ে চেক করা রুটটি লাইভ আছে কিনা
             async with bot.http_session.get(url, timeout=5, headers={"User-Agent": random.choice(USER_AGENTS)}) as resp:
-                if resp.status in [200, 201, 405]: # 405 Method Not Allowed ও ব্যাকহ্যান্ড রানিং প্রুফ করে
+                if resp.status in [200, 201, 405]: 
                     embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Working 🟢`", inline=False)
                 else:
                     embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Code: {resp.status})", inline=False)
         except Exception:
             embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Offline/Timeout)", inline=False)
 
-    embed.set_footer(text="🔒 Owner Exclusive Diagnostic Data")
+    embed.set_footer(text="🔒 Owner Exclusive Diagnostic Data (Only Visible To You)")
     await status_msg.edit(embed=embed)
 
 @bot.command()
