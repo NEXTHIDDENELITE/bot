@@ -34,10 +34,9 @@ IS_SERVER_STOPPED = False
 # 🌐 Global Session Instance
 bot.http_session = None
 
-# পোর্টাল ইউআরএল লিস্ট
+# 🚀 মিশন ইউআরএল (আগের ২টা ডিলিট করে নতুন Vercel Node অ্যাড করা হয়েছে)
 PORTAL_URLS = {
-    "Route Alpha 🛡️": "https://www.anikxcheatx.com/free/bd45d206",
-    "Route Bravo 🌐": "https://excheatsofficial.xyz/portal/5370752038f52a30"
+    "VIP Node 🌐": "https://uidbypass-livid.vercel.app/free/d2b786459ab9d787816dc3b3"
 }
 
 # পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
@@ -192,7 +191,13 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
         bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
         
     try:
+        # 🛡️ প্রতি রিকোয়েস্টে সম্পূর্ণ কাস্টমাইজড ফেক আইপি এবং ইউজার এজেন্ট জেনারেশন (Device Policy Bypass)
+        fake_ip = f"{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}"
         headers["User-Agent"] = random.choice(USER_AGENTS)
+        headers["X-Forwarded-For"] = fake_ip
+        headers["X-Real-IP"] = fake_ip
+        headers["Client-IP"] = fake_ip
+        
         kwargs = {"json": data} if is_json else {"data": data}
 
         async with bot.http_session.post(url, headers=headers, timeout=6, **kwargs) as response:
@@ -200,13 +205,13 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
             lowered_res = res_text.lower()
             
             if response.status in [200, 201]:
-                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false"]
+                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false", "limit"]
                 if any(x in lowered_res for x in block_keywords):
                     return portal_name, "Already Claimed ⚠️", False
                 else:
                     return portal_name, "Registered 🎉", True
             else:
-                if "already" in lowered_res or "exist" in lowered_res:
+                if "already" in lowered_res or "exist" in lowered_res or "limit" in lowered_res:
                     return portal_name, "Already Claimed ⚠️", False
                 return portal_name, f"Bypass Error ({response.status}) ❌", False
     except asyncio.TimeoutError:
@@ -296,19 +301,15 @@ async def free(ctx, uid: str):
 
     any_success = False
     all_already_claimed = True
-    has_alpha_success = False
 
     for portal_name, status_text, is_success in results:
         if is_success: 
             any_success = True
-            if portal_name == "Route Alpha 🛡️":
-                has_alpha_success = True
         if "Already" not in status_text: 
             all_already_claimed = False
 
     footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
 
-    # ওয়ান-লাইন গ্রিড স্ট্যাটাস ডিসিশন লজিক
     if any_success:
         grid_status = "Registered 🎉"
     else:
@@ -328,9 +329,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         return
 
-    # এক্সপায়ারি টাইম সেটআপ
-    expiry_duration = 259200 if has_alpha_success else 86400
-    expiry = now + expiry_duration
+    expiry = now + 86400  # Default 24H duration matching the new portal config
 
     # ডাটাবেজে ইউআইডি সফলভাবে সেভ করা
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -356,15 +355,13 @@ async def free(ctx, uid: str):
 async def url(ctx):
     if ctx.author.id != OWNER_ID: return
     
-    # ওনার সিকিউরিটির জন্য মেইন চ্যানেলের মেসেজটি সাথে সাথে ডিলিট করা
     try: await ctx.message.delete()
     except: pass
 
-    # ওনারের ইনবক্সে (DM) মেসেজ পাঠানোর প্রসেস শুরু
     try:
         status_msg = await ctx.author.send(embed=discord.Embed(description="⏳ Checking portal status... Please wait.", color=discord.Color.orange()))
     except discord.Forbidden:
-        warn = await ctx.send(f"⚠️ {ctx.author.mention}, আপনার DM ব্লক করা! দয়া করে ইনবক্স ওপেন করুন যাতে ডায়াগনস্টিক ডেটা গোপনে পাঠানো যায়।")
+        warn = await ctx.send(f"⚠️ {ctx.author.mention}, আপনার DM ব্লক করা! দয়া করে ইনবক্স ওপেন করুন যাতে ডায়াগনস্টিক ডেটা গোপনে পাঠানো যায়।")
         await asyncio.sleep(5)
         await warn.delete()
         return
