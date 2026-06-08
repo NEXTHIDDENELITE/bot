@@ -34,16 +34,16 @@ IS_SERVER_STOPPED = False
 # 🌐 Global Session Instance
 bot.http_session = None
 
-# 🌐 তোমার নতুন একদম নিখুঁত ডাইরেক্ট পোর্টাল লিংক
+# 🌐 তোমার ডাইরেক্ট পোর্টাল লিংক
 PORTAL_URLS = {
     "NHE Portal Grid ⚡": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
 }
 
-# পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
+# 🚀 রিয়েল উইন্ডোজ ক্রোম ব্রাউজারের লেটেস্ট ইউজার এজেন্ট (সিকিউরিটি বাইপাস করার জন্য)
 USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 ]
 
 # ================= 🗄️ SQLITE DATABASE INITIALIZATION =================
@@ -127,7 +127,7 @@ def run_server():
 async def on_ready():
     bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 Direct Token URL Grid Connected Successfully 🟢")
+    print("🌐 Anti-DevTools Security Bypass Subsystem Initialized 🟢")
 
 def has_allowed_role(member):
     if not hasattr(member, 'roles'): return False
@@ -184,17 +184,26 @@ async def on_message(message):
         await bot.process_commands(message)
 
 # ==================== ADVANCED PARALLEL REQUEST ENGINE ====================
-async def post_to_portal(url, data, headers, portal_name):
+async def post_to_portal(url, data, portal_name):
     if bot.http_session is None or bot.http_session.closed:
         bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
         
     try:
-        headers["User-Agent"] = random.choice(USER_AGENTS)
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        # 🌐 HTML ফাইল অ্যানালাইসিস করে তৈরি করা নিখুঁত ফুল-বাইপাস ব্রাউজার হেডার্স
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
+            "Cache-Control": "max-age=0",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "http://93.115.101.161:9293",
+            "Referer": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082",
+            "Upgrade-Insecure-Requests": "1",
+            "Connection": "keep-alive"
+        }
         
-        # সরাসরি মেইন লিংকে x-www-form-urlencoded ফরম্যাটে ডাটা সাবমিট করা হচ্ছে
-        async with bot.http_session.post(url, headers=headers, data=data, timeout=8) as response:
+        # ফরম ডেটা সরাসরি সাবমিট করা হচ্ছে
+        async with bot.http_session.post(url, headers=headers, data=data, timeout=10) as response:
             res_text = await response.text()
             lowered_res = res_text.lower()
             
@@ -208,9 +217,10 @@ async def post_to_portal(url, data, headers, portal_name):
                 if "already" in lowered_res or "exist" in lowered_res:
                     return portal_name, "Already Claimed ⚠️", False
                 return portal_name, f"Bypass Error ({response.status}) ❌", False
+                
     except asyncio.TimeoutError:
         return portal_name, "Gateway Timeout 🔌", False
-    except Exception:
+    except Exception as e:
         return portal_name, "Server Offline ❌", False
 
 # ==================== ADVANCED BULLETPROOF !FREE COMMAND ====================
@@ -281,14 +291,14 @@ async def free(ctx, uid: str):
 
     conn.close()
 
-    loading_embed = discord.Embed(description=f"⏳ Submitting Free Trial Request for UID: `{uid}`...", color=discord.Color.blue())
+    loading_embed = discord.Embed(description=f"⏳ Submitting Bypass Request via Secure Agent for UID: `{uid}`...", color=discord.Color.blue())
     msg = await ctx.send(embed=loading_embed)
 
-    # আসল ফর্ম সাবমিশন ডেটা অবজেক্ট
+    # আসল ফর্ম সাবমিশন পে-লোড অবজেক্ট
     form_payload = {"uid": str(uid)}
 
     tasks = [
-        post_to_portal(url, form_payload, {"Referer": "http://93.115.101.161:9293/", "Origin": "http://93.115.101.161:9293"}, name)
+        post_to_portal(url, form_payload, name)
         for name, url in PORTAL_URLS.items()
     ]
 
@@ -314,13 +324,13 @@ async def free(ctx, uid: str):
         return
 
     if not any_success:
-        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nAll external synchronization channels returned fatal server codes.", color=0xff0000)
+        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nAll external security bypass channels returned fatal codes.\n*প্যানেল মেমোরি রিফ্রেশ করে আবার চেষ্টা করো।*", color=0xff0000)
         embed.add_field(name="Distributed Grid Status", value=f"`{grid_status}`", inline=False)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
-    # স্ক্রিনশট (image_a5a15f.png) অনুযায়ী ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭২০০ সেকেন্ড)
+    # ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭২০০ সেকেন্ড)
     expiry_duration = 1987200
     expiry = now + expiry_duration
 
@@ -447,7 +457,7 @@ async def allremove(ctx):
     except: pass
 
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()  # Fixed the conn.conn() bug here
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM whitelist")
     conn.commit()
     conn.close()
@@ -485,6 +495,6 @@ async def post(ctx):
 init_db()
 threading.Thread(target=run_server, daemon=True).start()
 
-TOKEN = os.environ.get('DISCORD_TOKEN')
+TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN: bot.run(TOKEN)
 else: print("❌ ERROR: DISCORD_TOKEN missing!")
