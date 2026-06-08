@@ -34,7 +34,7 @@ IS_SERVER_STOPPED = False
 # 🌐 Global Session Instance
 bot.http_session = None
 
-# 🌐 তোমার দেওয়া একদম নিখুঁত মেইন ড্যাশবোর্ড টোকেন লিংক
+# 🌐 তোমার নতুন একদম নিখুঁত ডাইরেক্ট পোর্টাল লিংক
 PORTAL_URLS = {
     "NHE Portal Grid ⚡": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
 }
@@ -191,8 +191,9 @@ async def post_to_portal(url, data, headers, portal_name):
     try:
         headers["User-Agent"] = random.choice(USER_AGENTS)
         headers["Content-Type"] = "application/x-www-form-urlencoded"
+        headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         
-        # সরাসরি মেইন ইউআরএল লিংকে ফর্ম সাবমিট করা হচ্ছে
+        # সরাসরি মেইন লিংকে x-www-form-urlencoded ফরম্যাটে ডাটা সাবমিট করা হচ্ছে
         async with bot.http_session.post(url, headers=headers, data=data, timeout=8) as response:
             res_text = await response.text()
             lowered_res = res_text.lower()
@@ -283,11 +284,11 @@ async def free(ctx, uid: str):
     loading_embed = discord.Embed(description=f"⏳ Submitting Free Trial Request for UID: `{uid}`...", color=discord.Color.blue())
     msg = await ctx.send(embed=loading_embed)
 
-    # আসল ফর্ম ফিল্ড সাবমিশন পেলোড (UID Input Field)
+    # আসল ফর্ম সাবমিশন ডেটা অবজেক্ট
     form_payload = {"uid": str(uid)}
 
     tasks = [
-        post_to_portal(url, form_payload, {"Referer": url, "Origin": "http://93.115.101.161:9293"}, name)
+        post_to_portal(url, form_payload, {"Referer": "http://93.115.101.161:9293/", "Origin": "http://93.115.101.161:9293"}, name)
         for name, url in PORTAL_URLS.items()
     ]
 
@@ -319,7 +320,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         return
 
-    # স্ক্রিনশট অনুযায়ী ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭ ۲۰۰ সেকেন্ড)
+    # স্ক্রিনশট (image_a5a15f.png) অনুযায়ী ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭২০০ সেকেন্ড)
     expiry_duration = 1987200
     expiry = now + expiry_duration
 
@@ -446,7 +447,7 @@ async def allremove(ctx):
     except: pass
 
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
+    cursor = conn.cursor()  # Fixed the conn.conn() bug here
     cursor.execute("DELETE FROM whitelist")
     conn.commit()
     conn.close()
