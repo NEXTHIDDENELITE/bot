@@ -31,9 +31,12 @@ ALLOWED_ROLE_IDS = [1480832209995698259, 1480836036916674632]
 # 🔒 Global Server Stop Status Tracker
 IS_SERVER_STOPPED = False
 
-# 🌐 তোমার আসল কাজ করা ডাইরেক্ট পোর্টাল লিংক (ভুল API রুট বাদ দিয়ে মেইন লিংক)
+# 🌐 Global Session Instance
+bot.http_session = None
+
+# 🌐 সিনডেক্স অফিশিয়াল ড্যাশবোর্ডের আসল জাভাস্ক্রিপ্ট API এন্ডপয়েন্ট রুট
 PORTAL_URLS = {
-    "NHE Portal Grid ⚡": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
+    "NHE Portal Grid ⚡": "http://93.115.101.161:9293/api/free/claim"
 }
 
 # সিকিউরিটি বাইপাস ও রিয়েল ট্রাফিক জেনারেট করার জন্য ব্রাউজার ইউজার এজেন্ট
@@ -122,8 +125,10 @@ def run_server():
 
 @bot.event
 async def on_ready():
+    # ফ্রেশ সেশন চালু করা হলো কুকি জার ট্র্যাকিং সচল রেখে
+    bot.http_session = aiohttp.ClientSession()
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 Main Form URL & Cookie Session Integration Ready 🟢")
+    print("🌐 XMLHttpRequest Engine & Cookie Jar Synced Successfully 🟢")
 
 def has_allowed_role(member):
     if not hasattr(member, 'roles'): return False
@@ -179,62 +184,60 @@ async def on_message(message):
             return
         await bot.process_commands(message)
 
-# ==================== 🎯 ১০০% কারেক্ট ফর্ম সাবমিশন ইঞ্জিন ====================
-async def post_to_portal(url, uid_value, portal_name):
-    # আইপি ব্লকিং ট্র্যাকিং এড়াতে প্রতিবার একদম ফ্রেশ ক্লিন সেশন তৈরি করা হচ্ছে
-    async with aiohttp.ClientSession() as session:
-        try:
-            current_agent = random.choice(USER_AGENTS)
+# ==================== 🎯 ১০০% কাজ করার সিকিউরিটি বাইপাস ইঞ্জিন ====================
+async def post_to_portal(url, data, portal_name):
+    if bot.http_session is None or bot.http_session.closed:
+        bot.http_session = aiohttp.ClientSession()
+        
+    try:
+        # মেইন পেজ লিংক (কুকি এবং সেশন জেনারেট করার জন্য)
+        base_page_url = "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
+        current_agent = random.choice(USER_AGENTS)
 
-            # ১. ব্রাউজারের মতো প্রথমে নরমাল GET রিকোয়েস্ট দিয়ে পেজটি রিড করা
-            initial_headers = {
-                "User-Agent": current_agent,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-                "Connection": "keep-alive"
-            }
-            async with session.get(url, headers=initial_headers, timeout=10) as first_resp:
-                await first_resp.text()
+        # ১. প্রথমে ড্যাশবোর্ড পেজে সাধারণ ইউজারের মতো রিড রিকোয়েস্ট পাঠানো (কুকি সেভ করার জন্য)
+        initial_headers = {
+            "User-Agent": current_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Connection": "keep-alive"
+        }
+        async with bot.http_session.get(base_page_url, headers=initial_headers, timeout=10) as first_resp:
+            await first_resp.text()
 
-            # ২. মেইন পেজে ফর্ম সাবমিট করার জন্য রিয়াল হেডার্স (৪MD বা ৪04 এড়ানোর জন্য)
-            post_headers = {
-                "User-Agent": current_agent,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
-                "Content-Type": "application/x-www-form-urlencoded",  # স্ট্যান্ডার্ড ফর্ম ডাটা টাইপ
-                "Origin": "http://93.115.101.161:9293",
-                "Referer": url,                                       # রেফারার হিসেবে মেইন পেজ নিজেই
-                "Upgrade-Insecure-Requests": "1",
-                "Connection": "keep-alive"
-            }
+        # ২. Axios AJAX সিকিউরিটি এবং ৪0৫ মেথড সম্পূর্ণ বাইপাস করার জন্য ফুল স্ট্রাকচার্ড হেডার্স
+        post_headers = {
+            "User-Agent": current_agent,
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json",                    # সাইটটি ডাটা JSON ফরম্যাটে নেয়
+            "X-Requested-With": "XMLHttpRequest",                  # 💥 মোস্ট ক্রিশিয়াল হেডার (Axios প্রোটেকশন বাইপাস চাবি)
+            "Origin": "http://93.115.101.161:9293",
+            "Referer": base_page_url,
+            "Connection": "keep-alive"
+        }
+        
+        # ৩. সেশন কুকিসহ আসল এপিআই রুটে JSON পেলোড পোস্ট করা
+        async with bot.http_session.post(url, headers=post_headers, json=data, timeout=10) as response:
+            res_text = await response.text()
+            lowered_res = res_text.lower()
             
-            # ৩. স্ক্রিনশট ২ অনুযায়ী ইনপুট ফিল্ডের নাম 'uid' হিসেবে ফর্ম ডাটা পাঠানো হচ্ছে
-            form_payload = {"uid": str(uid_value)}
-            
-            async with session.post(url, headers=post_headers, data=form_payload, timeout=10) as response:
-                res_text = await response.text()
-                lowered_res = res_text.lower()
-                
-                # আইপি অলরেডি রেস্ট্রিক্টেড কিনা তা চেক করা (স্ক্রিনশট ২ অনুযায়ী)
-                if "this ip already claimed" in lowered_res or "ip already claimed" in lowered_res:
-                    return portal_name, "IP Blocked 🚫 (VPS IP exhausted)", False
-                
-                if response.status in [200, 201]:
-                    block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false", "failed"]
-                    if any(x in lowered_res for x in block_keywords):
-                        return portal_name, "Already Claimed ⚠️", False
-                    else:
-                        return portal_name, "Registered 🎉", True
+            # সার্ভার সাকসেস রেসপন্স বা ট্রায়াল ক্লেইম চেক
+            if response.status in [200, 201]:
+                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false", "failed"]
+                if any(x in lowered_res for x in block_keywords):
+                    return portal_name, "Already Claimed ⚠️", False
                 else:
-                    if "already" in lowered_res or "exist" in lowered_res:
-                        return portal_name, "Already Claimed ⚠️", False
-                    return portal_name, f"Bypass Error ({response.status}) ❌", False
-                    
-        except asyncio.TimeoutError:
-            return portal_name, "Gateway Timeout 🔌", False
-        except Exception as e:
-            print(f"❌ Connection Error: {e}")
-            return portal_name, "Server Offline ❌", False
+                    return portal_name, "Registered 🎉", True
+            else:
+                if "already" in lowered_res or "exist" in lowered_res:
+                    return portal_name, "Already Claimed ⚠️", False
+                return portal_name, f"Bypass Error ({response.status}) ❌", False
+                
+    except asyncio.TimeoutError:
+        return portal_name, "Gateway Timeout 🔌", False
+    except Exception as e:
+        print(f"❌ [Grid Core Alert] Engine Connection Error: {e}")
+        return portal_name, "Server Offline ❌", False
 
 # ==================== ADVANCED BULLETPROOF !FREE COMMAND ====================
 @bot.command()
@@ -304,11 +307,14 @@ async def free(ctx, uid: str):
 
     conn.close()
 
-    loading_embed = discord.Embed(description=f"⏳ Submitting Direct Form Request for UID: `{uid}`...", color=discord.Color.blue())
+    loading_embed = discord.Embed(description=f"⏳ Submitting AJAX Bypass Payload for UID: `{uid}`...", color=discord.Color.blue())
     msg = await ctx.send(embed=loading_embed)
 
+    # আসল JSON অবজেক্ট ডাটা পেলোড (যা ব্যাকএন্ড সার্ভার ডিমান্ড করে)
+    json_payload = {"uid": str(uid)}
+
     tasks = [
-        post_to_portal(url, uid, name)
+        post_to_portal(url, json_payload, name)
         for name, url in PORTAL_URLS.items()
     ]
 
@@ -316,44 +322,26 @@ async def free(ctx, uid: str):
 
     any_success = False
     all_already_claimed = True
-    ip_blocked_alert = False
-    detailed_status = "Failed ❌"
 
     for portal_name, status_text, is_success in results:
-        detailed_status = status_text
         if is_success: 
             any_success = True
         if "Already" not in status_text: 
             all_already_claimed = False
-        if "IP Blocked" in status_text:
-            ip_blocked_alert = True
 
     footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
-
-    if ip_blocked_alert:
-        embed = discord.Embed(
-            title="🚫 Hosting IP Blacklisted", 
-            description=(
-                f"**User ID:** `{uid}`\n\n"
-                f"❌ **Error:** `{detailed_status}`\n\n"
-                f"মামা, তোমার বটের হোস্টিং বা VPS আইপি অলরেডি এই প্যানেলে ট্রায়াল ক্লেইম করে ফেলেছে! "
-                f"এর সমাধান করতে হলে তোমাকে বটের হোস্টিংয়ে **Proxy/VPN** ব্যবহার করতে হবে অথবা হোস্টিং পরিবর্তন করতে হবে।"
-            ), 
-            color=0xff3333
-        )
-        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-        await msg.edit(embed=embed)
-        return
+    grid_status = "Registered 🎉" if any_success else "Failed ❌"
 
     if all_already_claimed:
-        embed = discord.Embed(title="⚠️ Registration Refused", description=f"**User ID:** `{uid}`\n\nThis target machine or UID has already exhausted its free trial token.", color=0xffa500)
-        embed.add_field(name="Distributed Grid Status", value=f"`Already Claimed ⚠️`", inline=False)
+        embed = discord.Embed(title="⚠️ Registration Refused", description=f"**User ID:** `{uid}`\n\nThis target machine or UID has already exhausted its trial token.", color=0xffa500)
+        embed.add_field(name="Distributed Grid Status", value=f"`{grid_status}`", inline=False)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
     if not any_success:
-        embed = discord.Embed(title="❌ Submission Failed", description=f"**User ID:** `{uid}`\n\nThe server rejected the request.\n**Reason:** `{detailed_status}`", color=0xff0000)
+        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nAll external security bypass channels returned fatal codes.\n*প্যানেল মেমোরি রিফ্রেশ করে আবার চেষ্টা করো।*", color=0xff0000)
+        embed.add_field(name="Distributed Grid Status", value=f"`{grid_status}`", inline=False)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
@@ -374,7 +362,7 @@ async def free(ctx, uid: str):
     embed.add_field(name="Database Sync", value="Active 🟢", inline=True)
     embed.add_field(name="Linked User", value=f"{ctx.author.mention}", inline=True)
     embed.add_field(name="Token Expiration", value=f"<t:{int(expiry)}:R>", inline=False)
-    embed.add_field(name="📡 Distributed Grid Status", value="`Registered 🎉`", inline=False)
+    embed.add_field(name="📡 Distributed Grid Status", value=f"`{grid_status}`", inline=False)
     
     if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
     embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
@@ -392,15 +380,17 @@ async def url(ctx):
     except discord.Forbidden: return
 
     embed = discord.Embed(title="🌐 Portal URL Status Diagnostic", color=0x3498db)
+    
+    if bot.http_session is None or bot.http_session.closed:
+        bot.http_session = aiohttp.ClientSession()
 
     for name, url in PORTAL_URLS.items():
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5, headers={"User-Agent": random.choice(USER_AGENTS)}) as resp:
-                    if resp.status in [200, 201, 405]: 
-                        embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Working 🟢`", inline=False)
-                    else:
-                        embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Code: {resp.status})", inline=False)
+            async with bot.http_session.get(url, timeout=5, headers={"User-Agent": random.choice(USER_AGENTS)}) as resp:
+                if resp.status in [200, 201, 405]: 
+                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Working 🟢`", inline=False)
+                else:
+                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Code: {resp.status})", inline=False)
         except Exception:
             embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Offline/Timeout)", inline=False)
 
