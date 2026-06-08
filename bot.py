@@ -34,9 +34,9 @@ IS_SERVER_STOPPED = False
 # 🌐 Global Session Instance
 bot.http_session = None
 
-# 🌐 স্ক্রিনশট অনুযায়ী তোমার নতুন ড্যাশবোর্ড পোর্টাল এপিআই রুট গ্রিড
+# 🌐 তোমার দেওয়া একদম নিখুঁত মেইন ড্যাশবোর্ড টোকেন লিংক
 PORTAL_URLS = {
-    "NHE Portal Grid ⚡": "http://93.115.101.161:9293/api/free/claim"
+    "NHE Portal Grid ⚡": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
 }
 
 # পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
@@ -127,7 +127,7 @@ def run_server():
 async def on_ready():
     bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
     print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 New API Panel Grid Connected Successfully 🟢")
+    print("🌐 Direct Token URL Grid Connected Successfully 🟢")
 
 def has_allowed_role(member):
     if not hasattr(member, 'roles'): return False
@@ -190,11 +190,10 @@ async def post_to_portal(url, data, headers, portal_name):
         
     try:
         headers["User-Agent"] = random.choice(USER_AGENTS)
-        headers["Accept"] = "application/json, text/plain, */*"
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
         
-        # প্যানেল টোকেন রিকোয়েস্টে সরাসরি JSON অবজেক্ট পাস করা হলো
-        async with bot.http_session.post(url, headers=headers, json=data, timeout=8) as response:
+        # সরাসরি মেইন ইউআরএল লিংকে ফর্ম সাবমিট করা হচ্ছে
+        async with bot.http_session.post(url, headers=headers, data=data, timeout=8) as response:
             res_text = await response.text()
             lowered_res = res_text.lower()
             
@@ -207,11 +206,6 @@ async def post_to_portal(url, data, headers, portal_name):
             else:
                 if "already" in lowered_res or "exist" in lowered_res:
                     return portal_name, "Already Claimed ⚠️", False
-                # যদি মূল এপিআই পাথ ডাইরেক্ট সাবমিট নেয় (Fallback Logic)
-                fallback_url = "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
-                async with bot.http_session.post(fallback_url, headers={"User-Agent": headers["User-Agent"]}, data={"uid": data["uid"]}, timeout=5) as fallback_resp:
-                    if fallback_resp.status in [200, 201]:
-                        return portal_name, "Registered 🎉", True
                 return portal_name, f"Bypass Error ({response.status}) ❌", False
     except asyncio.TimeoutError:
         return portal_name, "Gateway Timeout 🔌", False
@@ -286,14 +280,14 @@ async def free(ctx, uid: str):
 
     conn.close()
 
-    loading_embed = discord.Embed(description=f"⏳ Synchronizing HTTP Core Pipeline for UID: `{uid}`...", color=discord.Color.blue())
+    loading_embed = discord.Embed(description=f"⏳ Submitting Free Trial Request for UID: `{uid}`...", color=discord.Color.blue())
     msg = await ctx.send(embed=loading_embed)
 
-    # ড্যাশবোর্ডের ফর্মে সাবমিট করার আসল অবজেক্ট পেলোড
-    json_payload = {"uid": str(uid)}
+    # আসল ফর্ম ফিল্ড সাবমিশন পেলোড (UID Input Field)
+    form_payload = {"uid": str(uid)}
 
     tasks = [
-        post_to_portal(url, json_payload, {"Referer": "http://93.115.101.161:9293/", "Origin": "http://93.115.101.161:9293"}, name)
+        post_to_portal(url, form_payload, {"Referer": url, "Origin": "http://93.115.101.161:9293"}, name)
         for name, url in PORTAL_URLS.items()
     ]
 
@@ -325,7 +319,7 @@ async def free(ctx, uid: str):
         await msg.edit(embed=embed)
         return
 
-    # স্ক্রিনশট অনুযায়ী ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭২০০ সেকেন্ড)
+    # স্ক্রিনশট অনুযায়ী ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭ ۲۰۰ সেকেন্ড)
     expiry_duration = 1987200
     expiry = now + expiry_duration
 
@@ -452,7 +446,7 @@ async def allremove(ctx):
     except: pass
 
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.conn() if hasattr(conn, 'conn') else conn.cursor()
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM whitelist")
     conn.commit()
     conn.close()
