@@ -34,9 +34,9 @@ IS_SERVER_STOPPED = False
 # 🌐 Global Session Instance
 bot.http_session = None
 
-# 🚀 মিশন ইউআরএল (আগের ২টা ডিলিট করে নতুন Vercel Node অ্যাড করা হয়েছে)
+# 📡 আপডেট করা নতুন পোর্টাল ইউআরএল লিস্ট
 PORTAL_URLS = {
-    "VIP Node 🌐": "https://uidbypass-livid.vercel.app/free/d2b786459ab9d787816dc3b3"
+    "Main Route 🛡️": "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
 }
 
 # পোর্টালের সিকিউরিটি বাইপাস করার জন্য র্যান্ডম ইউজার এজেন্ট লিস্ট
@@ -191,27 +191,30 @@ async def post_to_portal(url, data, headers, portal_name, is_json=False):
         bot.http_session = aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar())
         
     try:
-        # 🛡️ প্রতি রিকোয়েস্টে সম্পূর্ণ কাস্টমাইজড ফেক আইপি এবং ইউজার এজেন্ট জেনারেশন (Device Policy Bypass)
-        fake_ip = f"{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}"
         headers["User-Agent"] = random.choice(USER_AGENTS)
-        headers["X-Forwarded-For"] = fake_ip
-        headers["X-Real-IP"] = fake_ip
-        headers["Client-IP"] = fake_ip
         
+        # নতুন ওয়েবসাইটের ক্লেম রুট টার্গেট করা
+        post_url = f"{url.rstrip('/')}/claim"
         kwargs = {"json": data} if is_json else {"data": data}
 
-        async with bot.http_session.post(url, headers=headers, timeout=6, **kwargs) as response:
+        async with bot.http_session.post(post_url, headers=headers, timeout=6, **kwargs) as response:
             res_text = await response.text()
             lowered_res = res_text.lower()
             
+            # স্ক্রিনশটের মেসেজ এবং সার্ভার লকিং ফিল্টার করার লজিক
+            block_keywords = [
+                "already claimed", "already", "exists", "registered", "claimed", 
+                "contact the portal owner", "contact owner", "বিদ্যমান", "ইতিমধ্যেই", 
+                "নিবন্ধিত", "success: false", "false"
+            ]
+            
             if response.status in [200, 201]:
-                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false", "limit"]
                 if any(x in lowered_res for x in block_keywords):
                     return portal_name, "Already Claimed ⚠️", False
                 else:
                     return portal_name, "Registered 🎉", True
             else:
-                if "already" in lowered_res or "exist" in lowered_res or "limit" in lowered_res:
+                if any(x in lowered_res for x in block_keywords):
                     return portal_name, "Already Claimed ⚠️", False
                 return portal_name, f"Bypass Error ({response.status}) ❌", False
     except asyncio.TimeoutError:
@@ -240,7 +243,7 @@ async def free(ctx, uid: str):
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cursor = conn.cursor()
 
-    # ১ ডিভাইস লিমিট চেক (কাস্টমাইজড নোটিশ মেসেজ সহ)
+    # ১ ডিভাইস লিমিট চেক
     if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
         cursor.execute("SELECT uid, expiry FROM whitelist WHERE discord_id = ?", (ctx.author.id,))
         existing = cursor.fetchone()
@@ -290,10 +293,11 @@ async def free(ctx, uid: str):
     loading_embed = discord.Embed(description=f"⏳ Processing UID: `{uid}` across encryption channels...", color=discord.Color.blue())
     msg = await ctx.send(embed=loading_embed)
 
-    form_data = {"uid": uid, "hardware_uid": uid}
+    # নতুন সাইটের ফরম্যাট অনুযায়ী ডাটা তৈরি
+    form_data = {"uid": uid}
 
     tasks = [
-        post_to_portal(url, form_data, {"Referer": url}, name)
+        post_to_portal(url, form_data, {"Referer": url, "Content-Type": "application/json"}, name, is_json=True)
         for name, url in PORTAL_URLS.items()
     ]
 
@@ -316,20 +320,22 @@ async def free(ctx, uid: str):
         grid_status = "Failed ❌"
 
     if all_already_claimed:
-        embed = discord.Embed(title="⚠️ Registration Refused", description=f"**User ID:** `{uid}`\n\nThis target machine has already exhausted its trial token on this grid.", color=0xffa500)
+        embed = discord.Embed(title="⚠️ Registration Refused", description=f"**User ID:** `{uid}`\n\nThis target machine or IP grid has already exhausted its trial token.", color=0xffa500)
         embed.add_field(name="📡 Distributed Grid Status", value=f"`{grid_status}`", inline=False)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
     if not any_success:
-        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nAll external synchronization channels returned fatal server codes.", color=0xff0000)
+        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nExternal synchronization channels returned a blocking code (IP Lock/Offline).", color=0xff0000)
         embed.add_field(name="📡 Distributed Grid Status", value=f"`{grid_status}`", inline=False)
         embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
         await msg.edit(embed=embed)
         return
 
-    expiry = now + 86400  # Default 24H duration matching the new portal config
+    # ২৩ দিনের ট্রায়াল এক্সপায়ারি টাইম সেটআপ (২৩ দিন = ১৯৯৫৮০০ সেকেন্ড)
+    expiry_duration = 1987200
+    expiry = now + expiry_duration
 
     # ডাটাবেজে ইউআইডি সফলভাবে সেভ করা
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -354,14 +360,13 @@ async def free(ctx, uid: str):
 @bot.command()
 async def url(ctx):
     if ctx.author.id != OWNER_ID: return
-    
     try: await ctx.message.delete()
     except: pass
 
     try:
         status_msg = await ctx.author.send(embed=discord.Embed(description="⏳ Checking portal status... Please wait.", color=discord.Color.orange()))
     except discord.Forbidden:
-        warn = await ctx.send(f"⚠️ {ctx.author.mention}, আপনার DM ব্লক করা! দয়া করে ইনবক্স ওপেন করুন যাতে ডায়াগনস্টিক ডেটা গোপনে পাঠানো যায়।")
+        warn = await ctx.send(f"⚠️ {ctx.author.mention}, আপনার DM ব্লক করা! দয়া করে ইনবক্স ওপেন করুন।")
         await asyncio.sleep(5)
         await warn.delete()
         return
@@ -377,7 +382,7 @@ async def url(ctx):
                 if resp.status in [200, 201, 405]: 
                     embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Working 🟢`", inline=False)
                 else:
-                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Code: {resp.status})", inline=False)
+                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Blocked/Issue 🔴` (Code: {resp.status})", inline=False)
         except Exception:
             embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Offline/Timeout)", inline=False)
 
