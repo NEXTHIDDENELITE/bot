@@ -100,26 +100,50 @@ async def free_whitelist(ctx, uid: str = None):
 def home():
     return "Server is Running Active!", 200
 
-# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট
+# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট (সব ধরনের রিকোয়েস্ট মেথড হ্যান্ডলার সহ)
 @app.route('/api/uidipport', methods=['GET', 'POST'])
 def uid_ip_port():
     try:
-        uid = request.args.get('uid')
-        if not uid and request.method == 'POST':
-            if request.is_json:
-                uid = request.get_json(silent=True).get('uid')
-            else:
-                uid = request.form.get('uid')
+        uid = None
+        
+        # ১. URL Parameters চেক করা (যেমন: /api/uidipport?uid=123)
+        if request.args.get('uid'):
+            uid = request.args.get('uid')
+            
+        # ২. JSON Body ডাটা চেক করা
+        elif request.is_json:
+            json_data = request.get_json(silent=True)
+            if json_data:
+                uid = json_data.get('uid') or json_data.get('UID')
 
+        # ৩. Form-Data বা URL-Encoded বডি চেক করা
+        elif request.form:
+            uid = request.form.get('uid') or request.form.get('UID')
+            
+        # ৪. যদি রিকোয়েস্টের ভেতর র-ডাটা বা টেক্সট আকারে শুধু UID পাঠানো হয়
+        if not uid and request.data:
+            try:
+                raw_data = request.data.decode('utf-8').strip()
+                if raw_data.isdigit():
+                    uid = raw_data
+                else:
+                    json_raw = json.loads(raw_data)
+                    uid = json_raw.get('uid') or json_raw.get('UID')
+            except:
+                pass
+
+        # যদি কোনোভাবেই UID খুঁজে না পাওয়া যায়
         if not uid:
             return Response("UID missing", status=400, mimetype='text/plain')
 
+        # ফায়ারবেস ডাটাবেজ চেক করা
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
+                # হোয়াইটলিস্ট একটিভ থাকলে প্যানেলের কাঙ্ক্ষিত রেসপন্স দেওয়া
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
@@ -127,7 +151,7 @@ def uid_ip_port():
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
-# ২. নতুন সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট (তোমার দেওয়া নতুন মিটএমপ্রক্সি সার্টিফিকেট)
+# ২. সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট
 @app.route('/api/certificate', methods=['GET', 'POST'])
 def get_certificate():
     cert_data = (
@@ -166,10 +190,8 @@ if __name__ == "__main__":
     if not TOKEN:
         print("❌ ERROR: DISCORD_TOKEN missing!")
     else:
-        # ব্যাকগ্রাউন্ড থ্রেডে ফ্লাস্ক ওয়েব সার্ভার স্টার্ট করা
         server_thread = Thread(target=run_web_server)
         server_thread.daemon = True
         server_thread.start()
         
-        # মেইন থ্রেডে ডিসকর্ড বট রান করা
         bot.run(TOKEN)
