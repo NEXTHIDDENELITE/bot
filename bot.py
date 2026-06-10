@@ -1,516 +1,125 @@
+import os
+import json
+import requests
 import discord
 from discord.ext import commands
-import sqlite3
-import time
-import os
-import aiohttp              # For high-speed async HTTP requests
-import asyncio              # For parallel thread execution
-from flask import Flask, request, Response  # For the local whitelist server
-import threading             # For running both the bot and server together
-import random                # For rotating User-Agents to mimic human traffic
 
+# ⚙️ কনফিগারেশন এবং ডাটাবেজ লিংক
+# তোমার স্ক্রিনশট অনুযায়ী মেইন Firebase URL এটি
+FIREBASE_BASE_URL = 'https://uid-whitelist-default-rtdb.firebaseio.com'
+
+# ডিসকর্ড বটের ইন্টেন্ট (Intents) সেটআপ করা
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents.message_content = True  # মেসেজ রিড করার পারমিশন (বাধ্যতামূলক)
 
-DB_FILE = "bot_data.db"
-CHANNEL_ID = 1507774505425178735 
-ANNOUNCEMENT_CHANNEL_ID = 1480775677505441813 
+# বটের প্রিফিক্স সেট করা (যেমন: !free)
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 👑 OWNER & DEVELOPER CONFIGURATION
-OWNER_ID = 1483917215349735674
-
-# 🌟 VIP MANAGERS CONFIGURATION
-VIP_MANAGERS = [1464861365645607027, 1100273442894401616]
-
-# 🏷️ ALLOWED ROLE IDS DURING STOP MODE
-ALLOWED_ROLE_IDS = [1480832209995698259, 1480836036916674632]
-
-# 🔒 Global Server Stop Status Tracker
-IS_SERVER_STOPPED = False
-
-# 🌐 Global Session Instance
-bot.http_session = None
-
-# 🌐 সিনডেক্স অফিশিয়াল ড্যাশবোর্ডের আসল জাভাস্ক্রিপ্ট API এন্ডপয়েন্ট রুট
-PORTAL_URLS = {
-    "NHE Portal Grid ⚡": "http://93.115.101.161:9293/api/free/claim"
-}
-
-# সিকিউরিটি বাইপাস ও রিয়েল ট্রাফিক জেনারেট করার জন্য ব্রাউজার ইউজার এজেন্ট
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-]
-
-# ================= 🗄️ SQLITE DATABASE INITIALIZATION =================
-def init_db():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS whitelist (
-            uid TEXT PRIMARY KEY,
-            discord_id INTEGER,
-            expiry REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-# ================= FLASK LOCAL SERVER PART =================
-app = Flask('')
-
-@app.route('/')
-def home():
-    try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute("SELECT uid FROM whitelist WHERE expiry > ?", (time.time(),))
-        rows = cursor.fetchall()
-        conn.close()
-        
-        uid_list = [row[0] for row in rows]
-        return Response("\n".join(uid_list), mimetype='text/plain')
-    except Exception as e:
-        return f"Database Error: {e}", 500
-
-@app.route('/api/uidipport', methods=['GET', 'POST'])
-@app.route('/api/certificate', methods=['GET', 'POST'])
-def handle_requests():
-    if 'certificate' in request.path:
-        return "true", 200
-
-    now = time.time()
-    uid = request.args.get('uid') or request.form.get('uid')
-    if not uid:
-        uid = request.args.get('id') or request.args.get('user_id') or request.form.get('id')
-
-    if not uid:
-        try:
-            input_data = request.get_json(silent=True)
-            if input_data: uid = input_data.get('uid') or input_data.get('id')
-        except Exception: pass
-
-    if not uid:
-        try:
-            raw_data = request.data.decode('utf-8').strip()
-            if raw_data.isdigit(): uid = raw_data
-        except Exception: pass
-
-    if not uid: return "missing_uid", 200
-
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("SELECT expiry FROM whitelist WHERE uid = ?", (uid,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        expiry = row[0]
-        if now < expiry: return "active", 200  
-        else: return "expired", 200
-            
-    return "not_whitelisted", 200
-
-def run_server():
-    import logging
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-    port = int(os.environ.get("PORT", 5080))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-# =====================================================================
 
 @bot.event
 async def on_ready():
-    # ফ্রেশ সেশন চালু করা হলো কুকি জার ট্র্যাকিং সচল রেখে
-    bot.http_session = aiohttp.ClientSession()
-    print(f"🔥 NHE Bot Pro v2 is online as {bot.user.name}!")
-    print("🌐 XMLHttpRequest Engine & Cookie Jar Synced Successfully 🟢")
+    print("==============================================")
+    print(f"Logged in successfully as: {bot.user.name}")
+    print(f"Bot ID: {bot.user.id}")
+    print("Firebase Realtime Database Connect করা হয়েছে মামা!")
+    print("==============================================")
 
-def has_allowed_role(member):
-    if not hasattr(member, 'roles'): return False
-    return any(role.id in ALLOWED_ROLE_IDS for role in member.roles)
 
-# ==================== 🛡️ ANTI-SPAM & CHANNEL LOCK LOGIC ====================
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
-    if message.channel.id != CHANNEL_ID: return
-
-    is_privileged = (message.author.id == OWNER_ID or 
-                     message.author.id in VIP_MANAGERS or 
-                     has_allowed_role(message.author))
-
-    valid_commands = ["!free", "!remove", "!info", "!post", "!vip", "!stop", "!on", "!allremove", "!url"]
-    content = message.content.strip()
-    is_valid_command = any(content.startswith(cmd) for cmd in valid_commands)
-
-    owner_only_commands = ["!info", "!post", "!vip", "!stop", "!on", "!allremove", "!url"]
-    is_owner_command = any(content.startswith(cmd) for cmd in owner_only_commands)
-
-    if is_owner_command and message.author.id != OWNER_ID:
-        try:
-            await message.delete()
-            warn_msg = await message.channel.send(f"❌ {message.author.mention}, **Only the Bot Owner can use this command!**")
-            await asyncio.sleep(4)
-            await warn_msg.delete()
-        except Exception: pass
+@bot.command(name='free')
+async def free_whitelist(ctx, uid: str = None):
+    """ইউজারদের UID ফ্রিতে হোয়াইটলিস্ট করার মেইন কমান্ড"""
+    
+    # ১. ইউজার যদি শুধু !free লিখে কোনো UID না দেয়
+    if uid is None:
+        embed_error = discord.Embed(
+            title="❌ ভুল ফরম্যাট!",
+            description="দয়া করে কমান্ডটির সাথে আপনার সঠিক UID দিন মামা।\n\n**সঠিক নিয়ম:**\n`!free <আপনার_UID>`\n\n*উদাহরণ:* `!free 8378790602`",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed_error)
         return
 
-    if IS_SERVER_STOPPED:
-        if is_privileged:
-            async def delete_user_msg(msg):
-                await asyncio.sleep(5)
-                try: await msg.delete()
-                except: pass
-            bot.loop.create_task(delete_user_msg(message))
-            await bot.process_commands(message)
+    # ২. UID ভ্যালিডেশন চেক (শুধুমাত্র সংখ্যা হতে হবে এবং দৈর্ঘ্য ৮ থেকে ১২ ডিজিট)
+    if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
+        embed_invalid = discord.Embed(
+            title="❌ অবৈধ UID!",
+            description="আপনার দেওয়া UID-টি সঠিক নয়। Free Fire UID শুধুমাত্র সংখ্যায় ৮ থেকে ১২ ডিজিটের হয়ে থাকে।",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed_invalid)
+        return
+
+    # প্রসেসিং মেসেজ পাঠানো
+    status_msg = await ctx.send("⏳ *ডাটাবেজ চেক করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...*")
+
+    try:
+        # ৩. চেক করা—এই UID টি অলরেডি ডাটাবেজে রেজিস্টার্ড আছে কিনা
+        check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
+        response = requests.get(check_url)
+        
+        if response.status_code == 200 and response.json() is not None:
+            await status_msg.delete()  # আগের ওয়েটিং মেসেজটি ডিলিট করা
+            
+            embed_exist = discord.Embed(
+                title="⚠️ অলরেডি রেজিস্টার্ড!",
+                description=f"**UID {uid}** অলরেডি আমাদের ডাটাবেজে হোয়াইটলিস্ট করা আছে মামা! আপনি সরাসরি প্যানেলে লগইন করতে পারবেন।",
+                color=discord.Color.orange()
+            )
+            await ctx.send(embed=embed_exist)
+            return
+
+        # ৪. নতুন ডাটা ফরম্যাট রেডি করা (ডিসকর্ড ট্র্যাকিং সহ)
+        user_data = {
+            "discord_name": f"{ctx.author.name}#{ctx.author.discriminator}" if ctx.author.discriminator != "0" else ctx.author.name,
+            "discord_id": str(ctx.author.id),
+            "status": "active"
+        }
+        
+        # ৫. Firebase Database-এ নির্দিষ্ট UID কি (Key) হিসেবে ডাটা পুশ (PUT রিকোয়েস্ট) করা
+        save_response = requests.put(check_url, data=json.dumps(user_data))
+
+        # আগের ওয়েটিং মেসেজ ডিলিট
+        await status_msg.delete()
+
+        if save_response.status_code == 200:
+            # সফলভাবে হোয়াইটলিস্ট হলে সুন্দর একটি এম্বেড মেসেজ পাঠানো
+            embed_success = discord.Embed(
+                title="✅ Whitelist Successful!",
+                description="আপনার UID সফলভাবে প্যানেলের ডাটাবেজে যুক্ত করা হয়েছে।",
+                color=discord.Color.green()
+            )
+            embed_success.add_field(name="Registered UID", value=f"`{uid}`", inline=False)
+            embed_success.add_field(name="Authorized By", value=ctx.author.mention, inline=False)
+            embed_success.add_field(name="Status", value="🟢 Active (Free Access)", inline=False)
+            embed_success.set_thumbnail(url=ctx.author.display_avatar.url)
+            embed_success.set_footer(text="NHE Premium Bypass • Powered by Firebase")
+            
+            await ctx.send(embed=embed_success)
         else:
-            try: await message.delete()
-            except: pass
-        return
-    else:
-        if not is_valid_command:
-            try:
-                await message.delete()
-                warn_msg = await message.channel.send(f"⚠️ {message.author.mention}, **Only working bot commands are allowed here!**")
-                await asyncio.sleep(3)
-                await warn_msg.delete()
-            except Exception as e:
-                print(f"❌ [Anti-Spam] Failed to delete non-command message: {e}")
-            return
-        await bot.process_commands(message)
+            await ctx.send(f"❌ ডাটাবেজ এরর: সার্ভার কোড {save_response.status_code} দিয়েছে। ওনারের সাথে যোগাযোগ করুন।")
 
-# ==================== 🎯 ১০০% কাজ করার সিকিউরিটি বাইপাস ইঞ্জিন ====================
-async def post_to_portal(url, data, portal_name):
-    if bot.http_session is None or bot.http_session.closed:
-        bot.http_session = aiohttp.ClientSession()
-        
-    try:
-        # মেইন পেজ লিংক (কুকি এবং সেশন জেনারেট করার জন্য)
-        base_page_url = "http://93.115.101.161:9293/free/1a8e2a51e1054b73d14199fff9486082"
-        current_agent = random.choice(USER_AGENTS)
-
-        # ১. প্রথমে ড্যাশবোর্ড পেজে সাধারণ ইউজারের মতো রিড রিকোয়েস্ট পাঠানো (কুকি সেভ করার জন্য)
-        initial_headers = {
-            "User-Agent": current_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Connection": "keep-alive"
-        }
-        async with bot.http_session.get(base_page_url, headers=initial_headers, timeout=10) as first_resp:
-            await first_resp.text()
-
-        # ২. Axios AJAX সিকিউরিটি এবং ৪0৫ মেথড সম্পূর্ণ বাইপাস করার জন্য ফুল স্ট্রাকচার্ড হেডার্স
-        post_headers = {
-            "User-Agent": current_agent,
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",                    # সাইটটি ডাটা JSON ফরম্যাটে নেয়
-            "X-Requested-With": "XMLHttpRequest",                  # 💥 মোস্ট ক্রিশিয়াল হেডার (Axios প্রোটেকশন বাইপাস চাবি)
-            "Origin": "http://93.115.101.161:9293",
-            "Referer": base_page_url,
-            "Connection": "keep-alive"
-        }
-        
-        # ৩. সেশন কুকিসহ আসল এপিআই রুটে JSON পেলোড পোস্ট করা
-        async with bot.http_session.post(url, headers=post_headers, json=data, timeout=10) as response:
-            res_text = await response.text()
-            lowered_res = res_text.lower()
-            
-            # সার্ভার সাকসেস রেসপন্স বা ট্রায়াল ক্লেইম চেক
-            if response.status in [200, 201]:
-                block_keywords = ["already", "exists", "registered", "claimed", "বিদ্যমান", "ইতিমধ্যেই", "নিবন্ধিত", "success: false", "failed"]
-                if any(x in lowered_res for x in block_keywords):
-                    return portal_name, "Already Claimed ⚠️", False
-                else:
-                    return portal_name, "Registered 🎉", True
-            else:
-                if "already" in lowered_res or "exist" in lowered_res:
-                    return portal_name, "Already Claimed ⚠️", False
-                return portal_name, f"Bypass Error ({response.status}) ❌", False
-                
-    except asyncio.TimeoutError:
-        return portal_name, "Gateway Timeout 🔌", False
+    except requests.exceptions.RequestException as e:
+        print(f"Network Error: {e}")
+        try: await status_msg.delete()
+        except: pass
+        await ctx.send("❌ ডাটাবেজ সার্ভারের সাথে কানেক্ট করা যাচ্ছে না। দয়া করে কিছুক্ষণ পর চেষ্টা করুন।")
     except Exception as e:
-        print(f"❌ [Grid Core Alert] Engine Connection Error: {e}")
-        return portal_name, "Server Offline ❌", False
+        print(f"Internal System Error: {e}")
+        try: await status_msg.delete()
+        except: pass
+        await ctx.send("❌ কোনো একটি ইন্টারনাল সিস্টেম এরর হয়েছে। বটের কনসোল চেক করুন।")
 
-# ==================== ADVANCED BULLETPROOF !FREE COMMAND ====================
-@bot.command()
-async def free(ctx, uid: str):
-    global IS_SERVER_STOPPED
-    is_privileged = (ctx.author.id == OWNER_ID or ctx.author.id in VIP_MANAGERS or has_allowed_role(ctx.author))
 
-    if IS_SERVER_STOPPED and not is_privileged: return
+# ========================================================
+# 🚀 বটের রান করার মেইন লজিক (তোমার এনভায়রনমেন্ট ভেরিয়েবল মেথড)
+# ========================================================
+if __name__ == "__main__":
+    TOKEN = os.environ.get('DISCORD_TOKEN')
 
-    if not (uid.isdigit() and 8 <= len(uid) <= 11):
-        embed = discord.Embed(title="❌ Access Refused", description="UID formatting is invalid. Must be **8 to 11 pure digits**.", color=0xff0000)
-        msg = await ctx.send(embed=embed)
-        if IS_SERVER_STOPPED:  
-            await asyncio.sleep(5)
-            try: await msg.delete()
-            except: pass
-        return
-
-    now = time.time()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-
-    # ১ ডিভাইস লিমিট চেক
-    if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS:
-        cursor.execute("SELECT uid, expiry FROM whitelist WHERE discord_id = ?", (ctx.author.id,))
-        existing = cursor.fetchone()
-        if existing:
-            existing_uid, expiry = existing
-            if expiry > now:
-                if existing_uid == uid:
-                    embed = discord.Embed(
-                        title="⚠️ System Notice", 
-                        description=(
-                            f"UID `{uid}` is already active and linked to your account.\n\n"
-                            f"If you want to change it, use `!remove {uid}` to free your slot and then register again via `!free [UID]`."
-                        ), 
-                        color=0xffa500
-                    )
-                    await ctx.send(embed=embed)
-                    conn.close()
-                    return
-                else:
-                    embed = discord.Embed(
-                        title="🚫 Device Limit Exceeded",
-                        description=(
-                            f"Hey {ctx.author.mention}, you can only manage **1 UID per Discord account**!\n\n"
-                            f"**🔒 Currently Linked UID:** `{existing_uid}`\n\n"
-                            f"If you want to use a different UID, remove your current slot first via:\n"
-                            f"`!remove {existing_uid}`"
-                        ),
-                        color=0xff3333
-                    )
-                    if ctx.author.avatar: embed.set_thumbnail(url=ctx.author.avatar.url)
-                    embed.set_footer(text="🤖 NHE Premium Security Slot Lock")
-                    await ctx.send(embed=embed)
-                    conn.close()
-                    return
-
-    # আইডি ডাটাবেজে অলরেডি একটিভ আছে কিনা চেক
-    cursor.execute("SELECT expiry FROM whitelist WHERE uid = ?", (uid,))
-    row = cursor.fetchone()
-    if row and row[0] > now:
-        embed = discord.Embed(title="⚠️ System Notice", description=f"UID `{uid}` is already active in the database.", color=0xffa500)
-        await ctx.send(embed=embed)
-        conn.close()
-        return
-
-    conn.close()
-
-    loading_embed = discord.Embed(description=f"⏳ Submitting AJAX Bypass Payload for UID: `{uid}`...", color=discord.Color.blue())
-    msg = await ctx.send(embed=loading_embed)
-
-    # আসল JSON অবজেক্ট ডাটা পেলোড (যা ব্যাকএন্ড সার্ভার ডিমান্ড করে)
-    json_payload = {"uid": str(uid)}
-
-    tasks = [
-        post_to_portal(url, json_payload, name)
-        for name, url in PORTAL_URLS.items()
-    ]
-
-    results = await asyncio.gather(*tasks)
-
-    any_success = False
-    all_already_claimed = True
-
-    for portal_name, status_text, is_success in results:
-        if is_success: 
-            any_success = True
-        if "Already" not in status_text: 
-            all_already_claimed = False
-
-    footer_text = "🤖 Commands: !free [UID] | !remove [UID]"
-    grid_status = "Registered 🎉" if any_success else "Failed ❌"
-
-    if all_already_claimed:
-        embed = discord.Embed(title="⚠️ Registration Refused", description=f"**User ID:** `{uid}`\n\nThis target machine or UID has already exhausted its trial token.", color=0xffa500)
-        embed.add_field(name="Distributed Grid Status", value=f"`{grid_status}`", inline=False)
-        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-        await msg.edit(embed=embed)
-        return
-
-    if not any_success:
-        embed = discord.Embed(title="❌ Network Error", description=f"**User ID:** `{uid}`\n\nAll external security bypass channels returned fatal codes.\n*প্যানেল মেমোরি রিফ্রেশ করে আবার চেষ্টা করো।*", color=0xff0000)
-        embed.add_field(name="Distributed Grid Status", value=f"`{grid_status}`", inline=False)
-        embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-        await msg.edit(embed=embed)
-        return
-
-    # ফ্রি ট্রায়াল সম্পূর্ণ ২৩ দিনের (২৩ দিন = ১৯৮৭২০০ সেকেন্ড)
-    expiry_duration = 1987200
-    expiry = now + expiry_duration
-
-    # ডাটাবেজে ইউআইডি সফলভাবে সেভ করা
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO whitelist (uid, discord_id, expiry) VALUES (?, ?, ?)", (uid, ctx.author.id, expiry))
-    conn.commit()
-    conn.close()
-
-    embed = discord.Embed(title="✅ Access Granted & Whitelisted", color=0x00ff00)
-    embed.add_field(name="Target UID", value=f"`{uid}`", inline=True)
-    embed.add_field(name="Database Sync", value="Active 🟢", inline=True)
-    embed.add_field(name="Linked User", value=f"{ctx.author.mention}", inline=True)
-    embed.add_field(name="Token Expiration", value=f"<t:{int(expiry)}:R>", inline=False)
-    embed.add_field(name="📡 Distributed Grid Status", value=f"`{grid_status}`", inline=False)
-    
-    if bot.user.avatar: embed.set_thumbnail(url=bot.user.avatar.url)
-    embed.set_footer(text=footer_text, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
-    await msg.edit(embed=embed)
-
-# ==================== 👑 EXCLUSIVE OWNER COMMANDS ====================
-
-@bot.command()
-async def url(ctx):
-    if ctx.author.id != OWNER_ID: return
-    try: await ctx.message.delete()
-    except: pass
-
-    try: status_msg = await ctx.author.send(embed=discord.Embed(description="⏳ Checking portal status... Please wait.", color=discord.Color.orange()))
-    except discord.Forbidden: return
-
-    embed = discord.Embed(title="🌐 Portal URL Status Diagnostic", color=0x3498db)
-    
-    if bot.http_session is None or bot.http_session.closed:
-        bot.http_session = aiohttp.ClientSession()
-
-    for name, url in PORTAL_URLS.items():
-        try:
-            async with bot.http_session.get(url, timeout=5, headers={"User-Agent": random.choice(USER_AGENTS)}) as resp:
-                if resp.status in [200, 201, 405]: 
-                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Working 🟢`", inline=False)
-                else:
-                    embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Code: {resp.status})", inline=False)
-        except Exception:
-            embed.add_field(name=name, value=f"🔗 {url}\n**Status:** `Not Working 🔴` (Offline/Timeout)", inline=False)
-
-    await status_msg.edit(embed=embed)
-
-@bot.command()
-async def remove(ctx, uid: str):
-    global IS_SERVER_STOPPED
-    is_privileged = (ctx.author.id == OWNER_ID or ctx.author.id in VIP_MANAGERS or has_allowed_role(ctx.author))
-    if IS_SERVER_STOPPED and not is_privileged: return
-
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("SELECT discord_id FROM whitelist WHERE uid = ?", (uid,))
-    row = cursor.fetchone()
-    
-    if row:
-        linked_id = row[0]
-        if ctx.author.id != OWNER_ID and ctx.author.id not in VIP_MANAGERS and linked_id != ctx.author.id:
-            embed = discord.Embed(title="🔒 Action Denied", description=f"You do not own the whitelist for UID `{uid}`!", color=0xff0000)
-            await ctx.send(embed=embed)
-            conn.close()
-            return
-            
-        cursor.execute("DELETE FROM whitelist WHERE uid = ?", (uid,))
-        conn.commit()
-        embed = discord.Embed(title="🗑️ Authorization Revoked", description=f"UID `{uid}` has been successfully unlinked from SQL Database!", color=0x00ff00)
+    if TOKEN:
+        bot.run(TOKEN)
     else:
-        embed = discord.Embed(title="❌ Data Not Found", description=f"UID `{uid}` could not be located inside database layers.", color=0xff0000)
-        
-    conn.close()
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def stop(ctx):
-    if ctx.author.id != OWNER_ID: return
-    global IS_SERVER_STOPPED
-    IS_SERVER_STOPPED = True
-    try: await ctx.message.delete()
-    except: pass
-
-    try:
-        for overwrite_target in ctx.channel.overwrites.keys():
-            if isinstance(overwrite_target, discord.Role):
-                if overwrite_target.permissions.administrator or overwrite_target.id in ALLOWED_ROLE_IDS: continue
-            overwrite = ctx.channel.overwrites_for(overwrite_target)
-            overwrite.send_messages = False
-            await ctx.channel.set_permissions(overwrite_target, overwrite=overwrite)
-            
-        everyone_overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
-        everyone_overwrite.send_messages = False
-        await ctx.channel.set_permissions(ctx.guild.default_role, overwrite=everyone_overwrite)
-    except Exception as e: print(f"❌ Role Error: {e}")
-
-    embed = discord.Embed(title="🔒 NHE PREMIUM CLUSTER TERMINATED", description="### 🛑 Channel Status: CHAT OVERRIDE OFF\n\n**⚠️ THIS TIME UID WHITELIST ONLY ADMIN & VIP OWNER**", color=0xff1111)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def on(ctx):
-    if ctx.author.id != OWNER_ID: return
-    global IS_SERVER_STOPPED
-    IS_SERVER_STOPPED = False
-    try: await ctx.message.delete()
-    except: pass
-
-    try:
-        for overwrite_target in ctx.channel.overwrites.keys():
-            overwrite = ctx.channel.overwrites_for(overwrite_target)
-            overwrite.send_messages = True
-            await ctx.channel.set_permissions(overwrite_target, overwrite=overwrite)
-    except Exception as e: print(f"❌ Reset Error: {e}")
-
-    embed = discord.Embed(title="🚀 TERMINAL SYSTEM ONLINE", description="### 🟢 Channel Status: OPEN FOR ALL ROLES", color=0x00ff00)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def allremove(ctx):
-    if ctx.author.id != OWNER_ID: return
-    try: await ctx.message.delete()
-    except: pass
-
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM whitelist")
-    conn.commit()
-    conn.close()
-
-    embed = discord.Embed(title="💥 CRITICAL RESET: ALL AUTHORIZATIONS PURGED", color=0xff0000)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def vip(ctx):
-    if ctx.author.id != OWNER_ID: return
-    embed = discord.Embed(title="🌟 NHE VIP BROTHERS PANEL 🌟", color=0x00ffff)
-    vip_list = "".join([f"**{c}.** Mention: <@{v_id}>\n" for c, v_id in enumerate(VIP_MANAGERS, 1)])
-    embed.add_field(name="📋 Active VIP Managers List", value=vip_list, inline=False)
-    await ctx.send(embed=embed)
-     
-@bot.command()
-async def info(ctx):
-    if ctx.author.id != OWNER_ID: return
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM whitelist")
-    count = cursor.fetchone()[0]
-    conn.close()
-    await ctx.send(embed=discord.Embed(title="📊 Cluster Diagnostics", description=f"Active Whitelists: `{count}`", color=0x3498db))
-
-@bot.command()
-async def post(ctx):
-    if ctx.author.id != OWNER_ID: return
-    try: await ctx.message.delete()
-    except: pass
-    target_channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
-    if target_channel:
-        await target_channel.send(content="@everyone", embed=discord.Embed(title="🚨 SERVER ISSUE ALERT!", description="Technical issues with **NHE UID Whitelist** server. Will be fixed soon!", color=0xff0000))
-
-init_db()
-threading.Thread(target=run_server, daemon=True).start()
-
-TOKEN = os.environ.get('DISCORD_TOKEN')
-if TOKEN: bot.run(TOKEN)
-else: print("❌ ERROR: DISCORD_TOKEN missing!")
+        print("\n❌ ERROR: DISCORD_TOKEN missing!")
+        print("দয়া করে আপনার অপারেটিং সিস্টেম বা হোস্টিং প্যানেলে 'DISCORD_TOKEN' এনভায়রনমেন্ট ভেরিয়েবলটি সেট করুন।")
+        print("লোকাল পিসিতে টেস্ট করার জন্য সাময়িকভাবে নিচের লাইনটি ব্যবহার করতে পারেন:")
+        print("bot.run('YOUR_ACTUAL_BOT_TOKEN_HERE')\n")
