@@ -2,14 +2,15 @@ import os
 import json
 import requests
 import discord
+import re
 from discord.ext import commands
-from flask import Flask, request, Response
+from flask import Flask, request, Response, render_template_string
 from threading import Thread
 
 # ⚙️ Firebase Realtime Database URL
 FIREBASE_BASE_URL = 'https://uid-whitelist-default-rtdb.firebaseio.com'
 
-# ডিসকورد বট সেটিংস
+# ডিসকর্ড বট সেটিংস
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -18,163 +19,192 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 app = Flask(__name__)
 
 # ==========================================
-# 🤖 ডিসকورد বট পার্ট (Discord Bot Commands)
+# 🌐 ১. ওয়েবসাইট ড্যাশবোর্ড (HTML UI Part)
+# ==========================================
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NHE PREMIUM BYPASS - Whitelist Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0f0c20; color: #fff; display: flex; justify-content: center; align-content: center; height: 100vh; padding: 20px; flex-direction: column; align-items: center; }
+        .card { background: #151130; padding: 30px; border-radius: 15px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); border: 1px solid rgba(255, 255, 255, 0.1); width: 100%; max-width: 450px; text-align: center; }
+        h1 { color: #00ffcc; font-size: 24px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        p { color: #aaa; font-size: 14px; margin-bottom: 25px; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; margin-bottom: 8px; color: #00ffcc; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        input[type="text"] { width: 100%; padding: 12px 15px; background: #1d183a; border: 1px solid #3d356b; border-radius: 8px; color: #fff; font-size: 16px; transition: 0.3s; text-align: center; letter-spacing: 2px; }
+        input[type="text"]:focus { border-color: #00ffcc; outline: none; box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+        .btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #00ffcc, #0099ff); border: none; border-radius: 8px; color: #000; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 255, 204, 0.4); }
+        .message { margin-top: 20px; padding: 12px; border-radius: 8px; font-size: 14px; display: none; }
+        .success { background: rgba(0, 255, 100, 0.15); border: 1px solid #00ff64; color: #00ff64; }
+        .error { background: rgba(255, 0, 100, 0.15); border: 1px solid #ff0064; color: #ff0064; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>NHE PREMIUM</h1>
+        <p>Enter Free Fire UID below to grant access</p>
+        
+        <form id="whitelistForm">
+            <div class="input-group">
+                <label for="uidInput">Player UID</label>
+                <input type="text" id="uidInput" placeholder="e.g. 1596041192" required maxlength="12">
+            </div>
+            <button type="submit" class="btn">Add to Whitelist 🟢</button>
+        </form>
+
+        <div id="msgBox" class="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('whitelistForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const uid = document.getElementById('uidInput').value.trim();
+            const msgBox = document.getElementById('msgBox');
+            
+            if(!/^\d{8,12}$/.test(uid)) {
+                msgBox.className = "message error";
+                msgBox.innerText = "❌ Invalid UID! Must be 8 to 12 digits.";
+                msgBox.style.display = "block";
+                return;
+            }
+
+            msgBox.className = "message";
+            msgBox.style.display = "block";
+            msgBox.style.background = "rgba(255,255,255,0.1)";
+            msgBox.style.color = "#fff";
+            msgBox.innerText = "⏳ Processing, please wait...";
+
+            try {
+                const response = await fetch('/api/webadd', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uid: uid })
+                });
+                const resText = await response.text();
+
+                if(response.status === 200) {
+                    msgBox.className = "message success";
+                    msgBox.innerText = "✅ " + resText;
+                } else {
+                    msgBox.className = "message error";
+                    msgBox.innerText = "❌ " + resText;
+                }
+            } catch (err) {
+                msgBox.className = "message error";
+                msgBox.innerText = "❌ Connection failed!";
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/')
+def home():
+    return render_template_string(HTML_TEMPLATE)
+
+# ওয়েবসাইট থেকে UID অ্যাড করার ব্যাকএন্ড এন্ডপয়েন্ট 🛠️
+@app.route('/api/webadd', methods=['POST'])
+def web_add_uid():
+    try:
+        data = request.get_json()
+        if not data or 'uid' not in data:
+            return "UID Missing", 400
+        
+        uid = str(data['uid']).strip()
+        if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
+            return "Invalid UID Format", 400
+
+        check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
+        response = requests.get(check_url)
+        
+        if response.status_code == 200 and response.json() is not None:
+            return f"UID {uid} is already whitelisted!", 200
+
+        user_data = {"discord_name": "Web Dashboard", "discord_id": "0000", "status": "active"}
+        save_response = requests.put(check_url, data=json.dumps(user_data))
+
+        if save_response.status_code == 200:
+            return f"UID {uid} successfully added to database!", 200
+        else:
+            return "Database insertion error", 500
+    except Exception as e:
+        return str(e), 500
+
+# ==========================================
+# 🤖 ২. ডিসকورد বট পার্ট (Bot Commands)
 # ==========================================
 @bot.event
 async def on_ready():
     print("==============================================")
     print(f"Logged in successfully as: {bot.user.name}")
-    print("Firebase Realtime Database Connected!")
     print("==============================================")
 
 @bot.command(name='free')
 async def free_whitelist(ctx, uid: str = None):
     if uid is None:
-        embed_error = discord.Embed(
-            title="❌ ভুল ফরম্যাট!",
-            description="দয়া করে কমান্ডটির সাথে আপনার সঠিক UID দিন।\n\n**সঠিক নিয়ম:**\n`!free <আপনার_UID>`",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed_error)
+        await ctx.send("❌ নিয়ম: `!free <UID>`")
         return
-
-    if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
-        embed_invalid = discord.Embed(
-            title="❌ অবৈধ UID!",
-            description="Free Fire UID শুধুমাত্র সংখ্যায় ৮ থেকে ১২ ডিজিটের হয়ে থাকে।",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed_invalid)
-        return
-
-    status_msg = await ctx.send("⏳ *ডাটাবেজ চেক করা হচ্ছে...*")
-
     try:
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
-        
         if response.status_code == 200 and response.json() is not None:
-            await status_msg.delete()
-            embed_exist = discord.Embed(
-                title="⚠️ অলরেডি রেজিস্টার্ড!",
-                description=f"**UID {uid}** অলরেডি ডাটাবেজে হোয়াইটলিস্ট করা আছে মামা!",
-                color=discord.Color.orange()
-            )
-            await ctx.send(embed=embed_exist)
+            await ctx.send(f"⚠️ **UID {uid}** অলরেডি হোয়াইটলিস্ট করা আছে মামা!")
             return
 
-        user_data = {
-            "discord_name": str(ctx.author.name),
-            "discord_id": str(ctx.author.id),
-            "status": "active"
-        }
-        
-        save_response = requests.put(check_url, data=json.dumps(user_data))
-        await status_msg.delete()
-
-        if save_response.status_code == 200:
-            embed_success = discord.Embed(
-                title="✅ Whitelist Successful!",
-                description=f"**UID `{uid}`** সফলভাবে ডাটাবেজে যুক্ত করা হয়েছে।",
-                color=discord.Color.green()
-            )
-            await ctx.send(embed=embed_success)
-        else:
-            await ctx.send("❌ ডাটাবেজ এরর এসেছে মামা।")
-
-    except Exception as e:
-        try: await status_msg.delete()
-        except: pass
-        await ctx.send("❌ সিস্টেমের কোনো একটি সমস্যা হয়েছে।")
+        user_data = {"discord_name": str(ctx.author.name), "discord_id": str(ctx.author.id), "status": "active"}
+        requests.put(check_url, data=json.dumps(user_data))
+        await ctx.send(f"✅ **UID `{uid}`** সফলভাবে ডাটাবেজে যুক্ত করা হয়েছে।")
+    except:
+        await ctx.send("❌ সিস্টেম এরর।")
 
 @bot.command(name='remove')
 async def remove_whitelist(ctx, uid: str = None):
-    if uid is None:
-        embed_error = discord.Embed(
-            title="❌ ভুল ফরম্যাট!",
-            description="দয়া করে যে UID টি ডিলিট করতে চান সেটি দিন।\n\n**সঠিক নিয়ম:**\n`!remove <আপনার_UID>`",
-            color=discord.Color.red()
-        )
-        await ctx.send(embed=embed_error)
-        return
-
-    status_msg = await ctx.send("⏳ *ডাটাবেজ থেকে রিমুভ করা হচ্ছে...*")
-
+    if uid is None: return
     try:
         target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
-        check_response = requests.get(target_url)
-        
-        if check_response.status_code == 200 and check_response.json() is None:
-            await status_msg.delete()
-            embed_not_found = discord.Embed(
-                title="❌ UID পাওয়া যায়নি!",
-                description=f"**UID `{uid}`** আমাদের ডাটাবেজে হোয়াইটলিস্ট করা নেই মামা।",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed_not_found)
-            return
+        requests.delete(target_url)
+        await ctx.send(f"🗑️ **UID `{uid}`** সফলভাবে মুছে ফেলা হয়েছে মামা!")
+    except:
+        await ctx.send("❌ ডিলিট করা যায়নি।")
 
-        delete_response = requests.delete(target_url)
-        await status_msg.delete()
-
-        if delete_response.status_code == 200:
-            embed_remove = discord.Embed(
-                title="🗑️ Removed Successfully!",
-                description=f"**UID `{uid}`** সফলভাবে হোয়াইটলিস্ট থেকে মুছে ফেলা হয়েছে মামা!",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed_remove)
-        else:
-            await ctx.send("❌ ডাটাবেজ থেকে ডিলিট করা যায়নি।")
-
-    except Exception as e:
-        try: await status_msg.delete()
-        except: pass
-        await ctx.send("❌ সিস্টেম এরর! ওনারের সাথে যোগাযোগ করুন।")
-
-# ==========================================
-# 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
-# ==========================================
-@app.route('/')
-def home():
-    return "Server is Running Active!", 200
-
-# এখানে methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] সব এলাউ করে দেওয়া হলো 🚀
+# =======================================================
+# 🌐 ৩. প্যানেল এপিআই পার্ট (C# Panel API Handler)
+# =======================================================
 @app.route('/api/uidipport', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def uid_ip_port():
     try:
         uid = None
-        
-        # ১. URL Parameters চেক করা
-        if request.args.get('uid'):
-            uid = request.args.get('uid')
-        # ২. JSON Body চেক করা
+        if request.args.get('uid'): uid = request.args.get('uid')
         elif request.is_json:
             json_data = request.get_json(silent=True)
             if json_data: uid = json_data.get('uid') or json_data.get('UID')
-        # ৩. Form-Data চেক করা
-        elif request.form:
-            uid = request.form.get('uid') or request.form.get('UID')
+        elif request.form: uid = request.form.get('uid') or request.form.get('UID')
         
-        # ৪. র-ডাটা (Raw Text/Bytes) চেক করা
         if not uid and request.data:
             try:
-                raw_data = request.data.decode('utf-8').strip()
-                if raw_data.isdigit():
-                    uid = raw_data
-                else:
-                    if '=' in raw_data:
-                        uid = raw_data.split('=')[-1].strip()
-                    else:
-                        json_raw = json.loads(raw_data)
-                        uid = json_raw.get('uid') or json_raw.get('UID')
-            except:
-                pass
+                raw_body = request.data.decode('utf-8', errors='ignore').strip()
+                if raw_body:
+                    match = re.search(r'\b\d{8,12}\b', raw_body)
+                    if match: uid = match.group(0)
+                    elif '=' in raw_body:
+                        potential_uid = raw_body.split('=')[-1].strip()
+                        if potential_uid.isdigit(): uid = potential_uid
+            except: pass
 
         if not uid:
-            return Response("UID missing", status=400, mimetype='text/plain')
+            for key, value in request.headers.items():
+                if 'uid' in key.lower(): uid = value; break
 
-        # Firebase ডাটাবেজ ভেরিফিকেশন
+        if not uid: return Response("UID missing", status=400, mimetype='text/plain')
+
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
@@ -187,7 +217,6 @@ def uid_ip_port():
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
-# সার্টিফিকেট এন্ডপয়েন্টেও সব মেথড এলাউড করা হলো 🚀
 @app.route('/api/certificate', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def get_certificate():
     cert_data = (
