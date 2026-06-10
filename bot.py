@@ -27,12 +27,13 @@ async def on_ready():
     print("Firebase Realtime Database Connected!")
     print("==============================================")
 
+# ১. হোয়াইটলিস্টে UID যুক্ত করার কমান্ড
 @bot.command(name='free')
 async def free_whitelist(ctx, uid: str = None):
     if uid is None:
         embed_error = discord.Embed(
             title="❌ ভুল ফরম্যাট!",
-            description="দয়া করে কমান্ডটির সাথে আপনার সঠিক UID দিন।\n\n**সঠিক নিয়ম:**\n`!free <আপনার_UID>`\n\n*উদাহরণ:* `!free 8378790602`",
+            description="দয়া করে কমান্ডটির সাথে আপনার সঠিক UID দিন।\n\n**সঠিক নিয়ম:**\n`!free <আপনার_UID>`",
             color=discord.Color.red()
         )
         await ctx.send(embed=embed_error)
@@ -41,13 +42,13 @@ async def free_whitelist(ctx, uid: str = None):
     if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
         embed_invalid = discord.Embed(
             title="❌ অবৈধ UID!",
-            description="আপনার দেওয়া UID-টি সঠিক নয়। Free Fire UID শুধুমাত্র সংখ্যায় ৮ থেকে ১২ ডিজিটের হয়ে থাকে।",
+            description="Free Fire UID শুধুমাত্র সংখ্যায় ৮ থেকে ১২ ডিজিটের হয়ে থাকে।",
             color=discord.Color.red()
         )
         await ctx.send(embed=embed_invalid)
         return
 
-    status_msg = await ctx.send("⏳ *ডাটাবেজ চেক করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...*")
+    status_msg = await ctx.send("⏳ *ডাটাবেজ চেক করা হচ্ছে...*")
 
     try:
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
@@ -75,83 +76,111 @@ async def free_whitelist(ctx, uid: str = None):
         if save_response.status_code == 200:
             embed_success = discord.Embed(
                 title="✅ Whitelist Successful!",
-                description="আপনার UID সফলভাবে প্যানেলের ডাটাবেজে যুক্ত করা হয়েছে।",
+                description=f"**UID `{uid}`** সফলভাবে ডাটাবেজে যুক্ত করা হয়েছে।",
                 color=discord.Color.green()
             )
-            embed_success.add_field(name="Registered UID", value=f"`{uid}`", inline=False)
-            embed_success.add_field(name="Authorized By", value=ctx.author.mention, inline=False)
-            embed_success.add_field(name="Status", value="🟢 Active", inline=False)
-            embed_success.set_footer(text="NHE Premium Bypass")
             await ctx.send(embed=embed_success)
         else:
-            await ctx.send(f"❌ ডাটাবেজ এরর: সার্ভার কোড {save_response.status_code} দিয়েছে।")
+            await ctx.send(f"❌ ডাটাবেজ এরর এসেছে মামা।")
 
     except Exception as e:
-        print(f"Error: {e}")
         try: await status_msg.delete()
         except: pass
         await ctx.send("❌ সিস্টেমের কোনো একটি সমস্যা হয়েছে।")
 
+
+# ২. হোয়াইটলিস্ট থেকে UID রিমুভ করার নতুন কমান্ড 🛠️
+@bot.command(name='remove')
+async def remove_whitelist(ctx, uid: str = None):
+    if uid is None:
+        embed_error = discord.Embed(
+            title="❌ ভুল ফরম্যাট!",
+            description="দয়া করে যে UID টি ডিলিট করতে চান সেটি দিন।\n\n**সঠিক নিয়ম:**\n`!remove <আপনার_UID>`",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed_error)
+        return
+
+    status_msg = await ctx.send("⏳ *ডাটাবেজ থেকে রিমুভ করা হচ্ছে...*")
+
+    try:
+        target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
+        
+        # প্রথমে চেক করা এই UID টি ডাটাবেজে আছে কিনা
+        check_response = requests.get(target_url)
+        
+        if check_response.status_code == 200 and check_response.json() is None:
+            await status_msg.delete()
+            embed_not_found = discord.Embed(
+                title="❌ UID পাওয়া যায়নি!",
+                description=f"**UID `{uid}`** আমাদের ডাটাবেজে হোয়াইটলিস্ট করা নেই মামা।",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed_not_found)
+            return
+
+        # Firebase থেকে ডেটা ডিলিট করার জন্য DELETE রিকোয়েস্ট পাঠানো
+        delete_response = requests.delete(target_url)
+        await status_msg.delete()
+
+        if delete_response.status_code == 200:
+            embed_remove = discord.Embed(
+                title="🗑️ Removed Successfully!",
+                description=f"**UID `{uid}`** সফলভাবে হোয়াইটলিস্ট থেকে মুছে ফেলা হয়েছে মামা!",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed_remove)
+        else:
+            await ctx.send("❌ ডাটাবেজ থেকে ডিলিট করা যায়নি।")
+
+    except Exception as e:
+        try: await status_msg.delete()
+        except: pass
+        await ctx.send("❌ সিস্টেম এরর! ওনারের সাথে যোগাযোগ করুন।")
+
+
 # ==========================================
 # 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
 # ==========================================
-
 @app.route('/')
 def home():
     return "Server is Running Active!", 200
 
-# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট (সব ধরনের রিকোয়েস্ট মেথড হ্যান্ডলার সহ)
 @app.route('/api/uidipport', methods=['GET', 'POST'])
 def uid_ip_port():
     try:
         uid = None
-        
-        # ১. URL Parameters চেক করা (যেমন: /api/uidipport?uid=123)
         if request.args.get('uid'):
             uid = request.args.get('uid')
-            
-        # ২. JSON Body ডাটা চেক করা
         elif request.is_json:
             json_data = request.get_json(silent=True)
-            if json_data:
-                uid = json_data.get('uid') or json_data.get('UID')
-
-        # ৩. Form-Data বা URL-Encoded বডি চেক করা
+            if json_data: uid = json_data.get('uid') or json_data.get('UID')
         elif request.form:
             uid = request.form.get('uid') or request.form.get('UID')
-            
-        # ৪. যদি রিকোয়েস্টের ভেতর র-ডাটা বা টেক্সট আকারে শুধু UID পাঠানো হয়
         if not uid and request.data:
             try:
                 raw_data = request.data.decode('utf-8').strip()
-                if raw_data.isdigit():
-                    uid = raw_data
+                if raw_data.isdigit(): uid = raw_data
                 else:
                     json_raw = json.loads(raw_data)
                     uid = json_raw.get('uid') or json_raw.get('UID')
-            except:
-                pass
+            except: pass
 
-        # যদি কোনোভাবেই UID খুঁজে না পাওয়া যায়
         if not uid:
             return Response("UID missing", status=400, mimetype='text/plain')
 
-        # ফায়ারবেস ডাটাবেজ চেক করা
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
-                # হোয়াইটলিস্ট একটিভ থাকলে প্যানেলের কাঙ্ক্ষিত রেসপন্স দেওয়া
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
-
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
-# ২. সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট
 @app.route('/api/certificate', methods=['GET', 'POST'])
 def get_certificate():
     cert_data = (
@@ -178,9 +207,6 @@ def get_certificate():
     )
     return Response(cert_data, status=200, mimetype='text/plain')
 
-# ==========================================
-# 🚀 সার্ভার এবং বট রান করার থ্রেড ফাংশন
-# ==========================================
 def run_web_server():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
@@ -193,5 +219,4 @@ if __name__ == "__main__":
         server_thread = Thread(target=run_web_server)
         server_thread.daemon = True
         server_thread.start()
-        
         bot.run(TOKEN)
