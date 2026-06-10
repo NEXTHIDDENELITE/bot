@@ -27,7 +27,6 @@ async def on_ready():
     print("Firebase Realtime Database Connected!")
     print("==============================================")
 
-# ১. হোয়াইটলিস্টে UID যুক্ত করার কমান্ড
 @bot.command(name='free')
 async def free_whitelist(ctx, uid: str = None):
     if uid is None:
@@ -81,15 +80,13 @@ async def free_whitelist(ctx, uid: str = None):
             )
             await ctx.send(embed=embed_success)
         else:
-            await ctx.send(f"❌ ডাটাবেজ এরর এসেছে মামা।")
+            await ctx.send("❌ ডাটাবেজ এরর এসেছে মামা।")
 
     except Exception as e:
         try: await status_msg.delete()
         except: pass
         await ctx.send("❌ সিস্টেমের কোনো একটি সমস্যা হয়েছে।")
 
-
-# ২. হোয়াইটলিস্ট থেকে UID রিমুভ করার নতুন কমান্ড 🛠️
 @bot.command(name='remove')
 async def remove_whitelist(ctx, uid: str = None):
     if uid is None:
@@ -105,8 +102,6 @@ async def remove_whitelist(ctx, uid: str = None):
 
     try:
         target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
-        
-        # প্রথমে চেক করা এই UID টি ডাটাবেজে আছে কিনা
         check_response = requests.get(target_url)
         
         if check_response.status_code == 200 and check_response.json() is None:
@@ -119,7 +114,6 @@ async def remove_whitelist(ctx, uid: str = None):
             await ctx.send(embed=embed_not_found)
             return
 
-        # Firebase থেকে ডেটা ডিলিট করার জন্য DELETE রিকোয়েস্ট পাঠানো
         delete_response = requests.delete(target_url)
         await status_msg.delete()
 
@@ -138,7 +132,6 @@ async def remove_whitelist(ctx, uid: str = None):
         except: pass
         await ctx.send("❌ সিস্টেম এরর! ওনারের সাথে যোগাযোগ করুন।")
 
-
 # ==========================================
 # 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
 # ==========================================
@@ -150,31 +143,47 @@ def home():
 def uid_ip_port():
     try:
         uid = None
+        
+        # ১. URL Parameters চেক করা
         if request.args.get('uid'):
             uid = request.args.get('uid')
+        # ২. JSON Body চেক করা
         elif request.is_json:
             json_data = request.get_json(silent=True)
             if json_data: uid = json_data.get('uid') or json_data.get('UID')
+        # ৩. Form-Data চেক করা
         elif request.form:
             uid = request.form.get('uid') or request.form.get('UID')
+        
+        # ৪. প্যানেল যদি কোনো ফিল্ড নেম ছাড়া সরাসরি র-ডাটা (Raw Text/Bytes) পাঠায়
         if not uid and request.data:
             try:
                 raw_data = request.data.decode('utf-8').strip()
-                if raw_data.isdigit(): uid = raw_data
+                # যদি সরাসরি ডিজিট বা সংখ্যা পাঠায় (যেমন: 15960411921)
+                if raw_data.isdigit():
+                    uid = raw_data
                 else:
-                    json_raw = json.loads(raw_data)
-                    uid = json_raw.get('uid') or json_raw.get('UID')
-            except: pass
+                    # যদি র-টেক্সটের ভেতর কাস্টম ফরম্যাট বা JSON থাকে
+                    if '=' in raw_data:
+                        uid = raw_data.split('=')[-1].strip()
+                    else:
+                        json_raw = json.loads(raw_data)
+                        uid = json_raw.get('uid') or json_raw.get('UID')
+            except:
+                pass
 
+        # যদি কোনোভাবেই UID পাওয়া না যায়
         if not uid:
             return Response("UID missing", status=400, mimetype='text/plain')
 
+        # Firebase ডাটাবেজ ভেরিফিকেশন
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
+                # প্যানেল সাকসেস হলে যে রেসপন্স আশা করে
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
