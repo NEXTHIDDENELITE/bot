@@ -38,8 +38,10 @@ HTML_TEMPLATE = """
         label { display: block; margin-bottom: 8px; color: #00ffcc; font-size: 12px; font-weight: bold; text-transform: uppercase; }
         input[type="text"] { width: 100%; padding: 12px 15px; background: #1d183a; border: 1px solid #3d356b; border-radius: 8px; color: #fff; font-size: 16px; transition: 0.3s; text-align: center; letter-spacing: 2px; }
         input[type="text"]:focus { border-color: #00ffcc; outline: none; box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
-        .btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #00ffcc, #0099ff); border: none; border-radius: 8px; color: #000; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; }
+        .btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #00ffcc, #0099ff); border: none; border-radius: 8px; color: #000; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; margin-bottom: 12px; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 255, 204, 0.4); }
+        .btn-danger { width: 100%; padding: 12px; background: linear-gradient(45deg, #ff0055, #ff5500); border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.3s; text-transform: uppercase; }
+        .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255, 0, 85, 0.4); }
         .message { margin-top: 20px; padding: 12px; border-radius: 8px; font-size: 14px; display: none; }
         .success { background: rgba(0, 255, 100, 0.15); border: 1px solid #00ff64; color: #00ff64; }
         .error { background: rgba(255, 0, 100, 0.15); border: 1px solid #ff0064; color: #ff0064; }
@@ -59,14 +61,19 @@ HTML_TEMPLATE = """
             <button type="submit" class="btn">Add to Whitelist 🟢</button>
         </form>
 
+        <!-- সব আইডি একসাথে রিমুভ করার বাটন -->
+        <button id="clearAllBtn" class="btn-danger">Clear All UIDs 🔴</button>
+
         <div id="msgBox" class="message"></div>
     </div>
 
     <script>
+        const msgBox = document.getElementById('msgBox');
+
+        // UID অ্যাড করার রিকোয়েস্ট
         document.getElementById('whitelistForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const uid = document.getElementById('uidInput').value.trim();
-            const msgBox = document.getElementById('msgBox');
             
             if(!/^\d{8,12}$/.test(uid)) {
                 msgBox.className = "message error";
@@ -77,8 +84,6 @@ HTML_TEMPLATE = """
 
             msgBox.className = "message";
             msgBox.style.display = "block";
-            msgBox.style.background = "rgba(255,255,255,0.1)";
-            msgBox.style.color = "#fff";
             msgBox.innerText = "⏳ Processing, please wait...";
 
             try {
@@ -101,6 +106,31 @@ HTML_TEMPLATE = """
                 msgBox.innerText = "❌ Connection failed!";
             }
         });
+
+        // সব UID একসাথে ডিলিট করার রিকোয়েস্ট
+        document.getElementById('clearAllBtn').addEventListener('click', async function() {
+            if(!confirm("Are you sure you want to REMOVE ALL UIDs from the database?")) return;
+
+            msgBox.className = "message";
+            msgBox.style.display = "block";
+            msgBox.innerText = "⏳ Removing all UIDs...";
+
+            try {
+                const response = await fetch('/api/webclearall', { method: 'POST' });
+                const resText = await response.text();
+
+                if(response.status === 200) {
+                    msgBox.className = "message success";
+                    msgBox.innerText = "🗑️ " + resText;
+                } else {
+                    msgBox.className = "message error";
+                    msgBox.innerText = "❌ " + resText;
+                }
+            } catch (err) {
+                msgBox.className = "message error";
+                msgBox.innerText = "❌ Connection failed!";
+            }
+        });
     </script>
 </body>
 </html>
@@ -110,33 +140,33 @@ HTML_TEMPLATE = """
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# ওয়েবসাইট থেকে UID অ্যাড করার ব্যাকএন্ড এন্ডপয়েন্ট 🛠️
+# ওয়েবসাইট থেকে UID অ্যাড করার এন্ডপয়েন্ট
 @app.route('/api/webadd', methods=['POST'])
 def web_add_uid():
     try:
         data = request.get_json()
-        if not data or 'uid' not in data:
-            return "UID Missing", 400
-        
+        if not data or 'uid' not in data: return "UID Missing", 400
         uid = str(data['uid']).strip()
-        if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
-            return "Invalid UID Format", 400
-
-        check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
-        response = requests.get(check_url)
         
-        if response.status_code == 200 and response.json() is not None:
-            return f"UID {uid} is already whitelisted!", 200
-
+        check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         user_data = {"discord_name": "Web Dashboard", "discord_id": "0000", "status": "active"}
         save_response = requests.put(check_url, data=json.dumps(user_data))
 
         if save_response.status_code == 200:
-            return f"UID {uid} successfully added to database!", 200
-        else:
-            return "Database insertion error", 500
-    except Exception as e:
-        return str(e), 500
+            return f"UID {uid} successfully added!", 200
+        return "Database error", 500
+    except Exception as e: return str(e), 500
+
+# 🗑️ ওয়েবসাইট থেকে সব UID একসাথে মুছে ফেলার এন্ডপয়েন্ট
+@app.route('/api/webclearall', methods=['POST'])
+def web_clear_all():
+    try:
+        target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids.json"
+        response = requests.delete(target_url)
+        if response.status_code == 200:
+            return "All UIDs have been completely removed!", 200
+        return "Failed to clear database.", 500
+    except Exception as e: return str(e), 500
 
 # ==========================================
 # 🤖 ২. ডিসকورد বট পার্ট (Bot Commands)
@@ -149,21 +179,13 @@ async def on_ready():
 
 @bot.command(name='free')
 async def free_whitelist(ctx, uid: str = None):
-    if uid is None:
-        await ctx.send("❌ নিয়ম: `!free <UID>`")
-        return
+    if uid is None: return
     try:
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
-        response = requests.get(check_url)
-        if response.status_code == 200 and response.json() is not None:
-            await ctx.send(f"⚠️ **UID {uid}** অলরেডি হোয়াইটলিস্ট করা আছে মামা!")
-            return
-
         user_data = {"discord_name": str(ctx.author.name), "discord_id": str(ctx.author.id), "status": "active"}
         requests.put(check_url, data=json.dumps(user_data))
-        await ctx.send(f"✅ **UID `{uid}`** সফলভাবে ডাটাবেজে যুক্ত করা হয়েছে।")
-    except:
-        await ctx.send("❌ সিস্টেম এরর।")
+        await ctx.send(f"✅ **UID `{uid}`** সফলভাবে যুক্ত করা হয়েছে।")
+    except: await ctx.send("❌ সিস্টেম এরর।")
 
 @bot.command(name='remove')
 async def remove_whitelist(ctx, uid: str = None):
@@ -172,8 +194,20 @@ async def remove_whitelist(ctx, uid: str = None):
         target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         requests.delete(target_url)
         await ctx.send(f"🗑️ **UID `{uid}`** সফলভাবে মুছে ফেলা হয়েছে মামা!")
+    except: await ctx.send("❌ ডিলিট করা যায়নি।")
+
+# 🗑️ ডিসকورد কমান্ডের মাধ্যমে সব আইডি একসাথে ডিলিট করার কমান্ড
+@bot.command(name='clearall')
+async def clear_all_whitelist(ctx):
+    try:
+        status_msg = await ctx.send("⏳ *সব UID ডাটাবেজ থেকে মুছে ফেলা হচ্ছে...*")
+        target_url = f"{FIREBASE_BASE_URL}/whitelisted_uids.json"
+        response = requests.delete(target_url)
+        await status_msg.delete()
+        if response.status_code == 200:
+            await ctx.send("💥 **সবাই আউট!** ডাটাবেজের সমস্ত UID সফলভাবে একসাথে ডিলিট করা হয়েছে মামা!")
     except:
-        await ctx.send("❌ ডিলিট করা যায়নি।")
+        await ctx.send("❌ ডাটাবেজ ক্লিয়ার করা যায়নি।")
 
 # =======================================================
 # 🌐 ৩. প্যানেল এপিআই পার্ট (C# Panel API Handler)
@@ -199,10 +233,6 @@ def uid_ip_port():
                         if potential_uid.isdigit(): uid = potential_uid
             except: pass
 
-        if not uid:
-            for key, value in request.headers.items():
-                if 'uid' in key.lower(): uid = value; break
-
         if not uid: return Response("UID missing", status=400, mimetype='text/plain')
 
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
@@ -214,8 +244,7 @@ def uid_ip_port():
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
-    except Exception as e:
-        return Response(str(e), status=500, mimetype='text/plain')
+    except Exception as e: return Response(str(e), status=500, mimetype='text/plain')
 
 @app.route('/api/certificate', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def get_certificate():
