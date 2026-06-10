@@ -3,18 +3,21 @@ import json
 import requests
 import discord
 from discord.ext import commands
+from quart import Quart, request, jsonify
+import asyncio
 
 # ⚙️ Firebase Realtime Database URL
 FIREBASE_BASE_URL = 'https://uid-whitelist-default-rtdb.firebaseio.com'
 
-# ডিসকর্ড বটের ইন্টেন্ট সেটিংস
+# ডিসকর্ড বট এবং কোয়ার্ট ওয়েব সার্ভার সেটিংস
 intents = discord.Intents.default()
 intents.message_content = True
-
-# বটের কমান্ড প্রিফিক্স সেট করা
 bot = commands.Bot(command_prefix='!', intents=intents)
+app = Quart(__name__)
 
-
+# ==========================================
+# 🤖 ডিসকর্ড বট পার্ট (Discord Bot Commands)
+# ==========================================
 @bot.event
 async def on_ready():
     print("==============================================")
@@ -22,12 +25,8 @@ async def on_ready():
     print("Firebase Realtime Database Connected!")
     print("==============================================")
 
-
 @bot.command(name='free')
 async def free_whitelist(ctx, uid: str = None):
-    """ইউজারদের UID ফ্রিতে হোয়াইটলিস্ট করার কমান্ড"""
-    
-    # ১. UID মিসিং থাকলে এরর
     if uid is None:
         embed_error = discord.Embed(
             title="❌ ভুল ফরম্যাট!",
@@ -37,7 +36,6 @@ async def free_whitelist(ctx, uid: str = None):
         await ctx.send(embed=embed_error)
         return
 
-    # ২. UID ভ্যালিডেশন চেক (৮ থেকে ১২ ডিজিটের সংখ্যা)
     if not uid.isdigit() or len(uid) < 8 or len(uid) > 12:
         embed_invalid = discord.Embed(
             title="❌ অবৈধ UID!",
@@ -50,7 +48,6 @@ async def free_whitelist(ctx, uid: str = None):
     status_msg = await ctx.send("⏳ *ডাটাবেজ চেক করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...*")
 
     try:
-        # ৩. ডাটাবেজে অলরেডি এই UID আছে কিনা চেক
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
         
@@ -64,14 +61,12 @@ async def free_whitelist(ctx, uid: str = None):
             await ctx.send(embed=embed_exist)
             return
 
-        # ৪. নতুন ইউজারের ডাটা রেডি করা
         user_data = {
             "discord_name": str(ctx.author.name),
             "discord_id": str(ctx.author.id),
             "status": "active"
         }
         
-        # ৫. Firebase-এ ডেটা সেভ করা
         save_response = requests.put(check_url, data=json.dumps(user_data))
         await status_msg.delete()
 
@@ -93,13 +88,59 @@ async def free_whitelist(ctx, uid: str = None):
         print(f"Error: {e}")
         try: await status_msg.delete()
         except: pass
-        await ctx.send("❌ সিস্টেমের কোনো একটি সমস্যা হয়েছে। দয়া করে ওনারের সাথে যোগাযোগ করুন।")
+        await ctx.send("❌ সিস্টেমের কোনো একটি সমস্যা হয়েছে।")
 
+# ==========================================
+# 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
+# ==========================================
+@app.route('/api/uidipport', methods=['POST'])
+async def uid_ip_port():
+    try:
+        req_data = await request.get_json(silent=True) or await request.form
+        uid = req_data.get('uid') if req_data else None
 
-# 🚀 বটের রান করার মেইন লজিক
-if __name__ == "__main__":
+        if not uid:
+            return jsonify({"status": "failed", "message": "UID missing"}), 400
+
+        check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
+        response = requests.get(check_url)
+
+        if response.status_code == 200 and response.json() is not None:
+            db_data = response.json()
+            if db_data.get("status") == "active":
+                return jsonify({
+                    "status": "success",
+                    "message": "Access Granted",
+                    "ip": "127.0.0.1",
+                    "port": "8080"
+                }), 200
+
+        return jsonify({"status": "failed", "message": "NOT whitelisted"}), 403
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/certificate', methods=['GET', 'POST'])
+async def get_certificate():
+    return jsonify({"status": "success", "certificate": "valid_cert_data_here"})
+
+# ==========================================
+# 🚀 রান করার মেইন ফাংশন
+# ==========================================
+async def main():
     TOKEN = os.environ.get('DISCORD_TOKEN')
-    if TOKEN:
-        bot.run(TOKEN)
-    else:
+    if not TOKEN:
         print("❌ ERROR: DISCORD_TOKEN missing!")
+        return
+
+    port = int(os.environ.get("PORT", 5000))
+    config = Quart.make_config(app)
+    config.bind = [f"0.0.0.0:{port}"]
+    
+    await asyncio.gather(
+        bot.start(TOKEN),
+        app.run_task(host="0.0.0.0", port=port)
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
