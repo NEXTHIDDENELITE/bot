@@ -3,17 +3,19 @@ import json
 import requests
 import discord
 from discord.ext import commands
-from quart import Quart, request, Response
-import asyncio
+from flask import Flask, request, Response
+from threading import Thread
 
 # ⚙️ Firebase Realtime Database URL
 FIREBASE_BASE_URL = 'https://uid-whitelist-default-rtdb.firebaseio.com'
 
-# ডিসকর্ড বট এবং কোয়ার্ট ওয়েব সার্ভার সেটিংস
+# ডিসকর্ড বট সেটিংস
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
-app = Quart(__name__)
+
+# ফ্লাস্ক ওয়েব সার্ভার সেটিংস
+app = Flask(__name__)
 
 # ==========================================
 # 🤖 ডিসকর্ড বট পার্ট (Discord Bot Commands)
@@ -94,82 +96,80 @@ async def free_whitelist(ctx, uid: str = None):
 # 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
 # ==========================================
 
-# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট (POST এবং GET দুটাই হ্যান্ডেল করবে)
+@app.route('/')
+def home():
+    return "Server is Running Active!", 200
+
+# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট
 @app.route('/api/uidipport', methods=['GET', 'POST'])
-async def uid_ip_port():
+def uid_ip_port():
     try:
-        # প্যানেল থেকে পাঠানো UID গেট করা (C# যেভাবে রিকোয়েস্ট পাঠায় সে অনুযায়ী)
         uid = request.args.get('uid')
-        if not uid:
-            if request.method == 'POST':
-                req_data = await request.get_json(silent=True) or await request.form
-                uid = req_data.get('uid') if req_data else None
+        if not uid and request.method == 'POST':
+            if request.is_json:
+                uid = request.get_json(silent=True).get('uid')
+            else:
+                uid = request.form.get('uid')
 
         if not uid:
             return Response("UID missing", status=400, mimetype='text/plain')
 
-        # Firebase ডাটাবেজে এই UID-টি হোয়াইটলিস্টেড কিনা চেক করা
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
-                # প্যানেলের রিকোয়েস্ট করা সেই হুবহু রেসপন্স ফরম্যাট
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
-        # হোয়াইটলিস্টেড না থাকলে খালি রেসপন্স বা এরর দেওয়া
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
 
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
-
-# ২. সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট (image_e320dd.png অনুযায়ী হুবহু PEM রেসপন্স)
+# ২. নতুন সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট (তোমার দেওয়া নতুন মিটএমপ্রক্সি সার্টিফিকেট)
 @app.route('/api/certificate', methods=['GET', 'POST'])
-async def get_certificate():
+def get_certificate():
     cert_data = (
         "-----BEGIN CERTIFICATE-----\n"
-        "MIIDNTCCAh2gAwIBAgIUd51MdSXNEYJ5hcaHqvZI2RzSHQYWDQYJKoZIhvcNAQEL\n"
-        "BQAwKDESMBAGA1UEAwwJbW1oXbYb3h5MRIwEAYDVQQKDAl0aXtHjveHkwHhcN\n"
-        "MjYwNDI0MTAwMjQWhcNMzYwNDI1MTAwMjAoMRIwEAYDVQQKDAl0aXtHjveHj\n"
-        "eHkxEjAQBgNVBAMMC1pwdG1w94etTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC\n"
-        "AQoCggEBALZwx hZmEODKBNK5+4HseWqH8VAEbRzy3D5LB0iqFMoLOmHj/PzcHy0\n"
-        "ilcg+xZ+yxaeqiYjdHfgC0z/XnVBi5h8xqJZc395DSskaFTOcuSH77XxWPuKIe2z\n"
-        "NcWQMjIZ75SkX3QqnnwwxyigolehoQl3bTSscOpqZVqXOVPIvev9g8SRT+GG4+Qx\n"
-        "7FtxPOF1Hw1kQt+PMW4yc8tHFSnGbLTfxOrmrW4Fvka1JFuV7gBd1pqnXMlFREG/\n"
-        "ZNudP/qXv6LLjRvcgKL0Kmr55kwAn2atyr50VjNnJdlUBv6tFGYQiMs1Bgt3rTT0\n"
-        "p+lTAjaZHrfcsoDIwn/nortvNJ4VcjMCAwEAAaNXMFUwDwYDVR0TAQH/BAUwAwEB\n"
+        "MIIDNTCCAh2gAwIBAgIUX2m1TmLS4GfVMHdzMQgwmScgpdIwDQYJKoZIhvcNAQEL\n"
+        "BQAwKDESMBAGA1UEAwwJbWl0bXByb3h5MRIwEAYDVQQKDAltaXRtcHJveHkwHhcN\n"
+        "MjYwMTAyMDgwOTE2WhcNMzYwMTAyMDgwOTE2WjAoMRIwEAYDVQQDDAltaXRtcHJv\n"
+        "eHkxEjAQBgNVBAoMCW1pdG1wcm94eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC\n"
+        "AQoCggEBALSE/CFt4FOmr4RvvdgdzbP5cVT4m1rDDcHLRYUweDIIaLIHfT15xPVA\n"
+        "9uShdE14J4c9jethHY9UVqypTkEBL0+Yxui0bzflrPRqU42fRtXcDS3Z9tx9kotO\n"
+        "bD+kLLqZam7xCCCOawsEXx5V0vicxo7ar8Tj/nC/8Yfnswu5idJi35Ycbx9vnUER\n"
+        "2t1n7Jol1Rea0Oat+JljMqJVEh4GJWh7tWR23r99UXYJH/ya4PFMZHnP92F5SUCs\n"
+        "AdDWYgbYeZl2ww9iwKPcd+BQO/w/2ePjwN6jfS7QkDyV1DG6e8QtOoBONJx50WQR/\n"
+        "Vstr+bkvTUwfBIpdrjVO6a8J555HiacCAwEAAaNXMFUwDwYDVR0TAQH/BAUwAwEB\n"
         "/zATBgNVHSUEDDAKBggrBgEFBQcDATAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYE\n"
-        "FMnVuvmLj86XBNIEvowpXAqurv7bMA0GCSqGSIb3DQEBCwUAA4IBAQA0nJDV2h1O\n"
-        "/Mq0QdDEcxzPC+8mhnoBLs0uZtML09/K16c/FhC10JAyldLTbJAgXTYmteYRFsR\n"
-        "TtKLHxJ83rgXMXBmN1vT+Ls61LPk5WI8EOFKFYOMdj05Q9kztCynaqwL98xcVmka\n"
-        "RjaZjBr/wJ3lurTMjCCFy9i8BkraspQJbSnfDPdNANHpZNXfSv8/IWJQ/pt9Q+j\n"
-        "q+YmggaU3LWsZ5ZH1z/NcPDTndwEa/sUs4xkFOPA+DLXH3uKALLTorEaY8WNNLya\n"
-        "3BUXFQzW7jqkQ/GSjZ3OFyceYzyXLKK386J81vzR92QSoesQFZWyUiSR4MWhNLRf\n"
-        "Yghj7x8ARJup\n"
+        "FCFEVpgJGAJPk0Hr69NGn602BW4SMA0GCSqGSIb3DQEBCwUAA4IBAQCZBAA7Yz/l\n"
+        "G0SqJ9uAoQk4HFNpY+ymrELX2B6PObDZTJZL7MfafbLpr572o1xvYf1ghQZiy3SF\n"
+        "Qo0CzlUvMAOtjqqocvM8NLMHnxQJRADQm8r/t7fov//+aeansi9hqw/STrvHs83j\n"
+        "GRNKF4CaoAXoIJ5XJfv7OH4+mqJ1oBKquPVbNUasVCHFhXER+EC+kB0GCOjdodQo\n"
+        "wzafnjnwjOps6iw+rqcIGCM2Qkv4mgT6TtxTcUEgFl+bKG3MuVBpJmVixJjQVHbs\n"
+        "NFu4fgpa9HuoK6xr4f1il4yMBF6KmBYEnt98dMgVKpSt/APSE3tG7HoLglJP0ahS\n"
+        "39WjEIjbNVo8\n"
         "-----END CERTIFICATE-----\n"
     )
     return Response(cert_data, status=200, mimetype='text/plain')
 
+# ==========================================
+# 🚀 সার্ভার এবং বট রান করার থ্রেড ফাংশন
+# ==========================================
+def run_web_server():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
-# ==========================================
-# 🚀 রান করার মেইন ফাংশন
-# ==========================================
-async def main():
+if __name__ == "__main__":
     TOKEN = os.environ.get('DISCORD_TOKEN')
     if not TOKEN:
         print("❌ ERROR: DISCORD_TOKEN missing!")
-        return
-
-    port = int(os.environ.get("PORT", 5000))
-    config = Quart.make_config(app)
-    config.bind = [f"0.0.0.0:{port}"]
-    
-    await asyncio.gather(
-        bot.start(TOKEN),
-        app.run_task(host="0.0.0.0", port=port)
-    )
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    else:
+        # ব্যাকগ্রাউন্ড থ্রেডে ফ্লাস্ক ওয়েব সার্ভার স্টার্ট করা
+        server_thread = Thread(target=run_web_server)
+        server_thread.daemon = True
+        server_thread.start()
+        
+        # মেইন থ্রেডে ডিসকর্ড বট রান করা
+        bot.run(TOKEN)
