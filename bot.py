@@ -9,7 +9,7 @@ from threading import Thread
 # ⚙️ Firebase Realtime Database URL
 FIREBASE_BASE_URL = 'https://uid-whitelist-default-rtdb.firebaseio.com'
 
-# ডিসকর্ড বট সেটিংস
+# ডিসকورد বট সেটিংস
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -18,7 +18,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 app = Flask(__name__)
 
 # ==========================================
-# 🤖 ডিসকর্ড বট পার্ট (Discord Bot Commands)
+# 🤖 ডিসকورد বট পার্ট (Discord Bot Commands)
 # ==========================================
 @bot.event
 async def on_ready():
@@ -139,7 +139,8 @@ async def remove_whitelist(ctx, uid: str = None):
 def home():
     return "Server is Running Active!", 200
 
-@app.route('/api/uidipport', methods=['GET', 'POST'])
+# এখানে methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] সব এলাউ করে দেওয়া হলো 🚀
+@app.route('/api/uidipport', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def uid_ip_port():
     try:
         uid = None
@@ -155,15 +156,13 @@ def uid_ip_port():
         elif request.form:
             uid = request.form.get('uid') or request.form.get('UID')
         
-        # ৪. প্যানেল যদি কোনো ফিল্ড নেম ছাড়া সরাসরি র-ডাটা (Raw Text/Bytes) পাঠায়
+        # ৪. র-ডাটা (Raw Text/Bytes) চেক করা
         if not uid and request.data:
             try:
                 raw_data = request.data.decode('utf-8').strip()
-                # যদি সরাসরি ডিজিট বা সংখ্যা পাঠায় (যেমন: 15960411921)
                 if raw_data.isdigit():
                     uid = raw_data
                 else:
-                    # যদি র-টেক্সটের ভেতর কাস্টম ফরম্যাট বা JSON থাকে
                     if '=' in raw_data:
                         uid = raw_data.split('=')[-1].strip()
                     else:
@@ -172,7 +171,6 @@ def uid_ip_port():
             except:
                 pass
 
-        # যদি কোনোভাবেই UID পাওয়া না যায়
         if not uid:
             return Response("UID missing", status=400, mimetype='text/plain')
 
@@ -183,14 +181,14 @@ def uid_ip_port():
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
-                # প্যানেল সাকসেস হলে যে রেসপন্স আশা করে
                 return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
         return Response("Unauthorized UID", status=403, mimetype='text/plain')
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
-@app.route('/api/certificate', methods=['GET', 'POST'])
+# সার্টিফিকেট এন্ডপয়েন্টেও সব মেথড এলাউড করা হলো 🚀
+@app.route('/api/certificate', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def get_certificate():
     cert_data = (
         "-----BEGIN CERTIFICATE-----\n"
