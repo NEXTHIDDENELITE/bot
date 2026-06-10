@@ -3,7 +3,7 @@ import json
 import requests
 import discord
 from discord.ext import commands
-from quart import Quart, request, jsonify
+from quart import Quart, request, Response
 import asyncio
 
 # ⚙️ Firebase Realtime Database URL
@@ -93,36 +93,65 @@ async def free_whitelist(ctx, uid: str = None):
 # ==========================================
 # 🌐 প্যানেল এপিআই পার্ট (C# Panel API Endpoints)
 # ==========================================
-@app.route('/api/uidipport', methods=['POST'])
+
+# ১. আইপি এবং পোর্ট রেসপন্স এন্ডপয়েন্ট (POST এবং GET দুটাই হ্যান্ডেল করবে)
+@app.route('/api/uidipport', methods=['GET', 'POST'])
 async def uid_ip_port():
     try:
-        req_data = await request.get_json(silent=True) or await request.form
-        uid = req_data.get('uid') if req_data else None
+        # প্যানেল থেকে পাঠানো UID গেট করা (C# যেভাবে রিকোয়েস্ট পাঠায় সে অনুযায়ী)
+        uid = request.args.get('uid')
+        if not uid:
+            if request.method == 'POST':
+                req_data = await request.get_json(silent=True) or await request.form
+                uid = req_data.get('uid') if req_data else None
 
         if not uid:
-            return jsonify({"status": "failed", "message": "UID missing"}), 400
+            return Response("UID missing", status=400, mimetype='text/plain')
 
+        # Firebase ডাটাবেজে এই UID-টি হোয়াইটলিস্টেড কিনা চেক করা
         check_url = f"{FIREBASE_BASE_URL}/whitelisted_uids/{uid}.json"
         response = requests.get(check_url)
 
         if response.status_code == 200 and response.json() is not None:
             db_data = response.json()
             if db_data.get("status") == "active":
-                return jsonify({
-                    "status": "success",
-                    "message": "Access Granted",
-                    "ip": "127.0.0.1",
-                    "port": "8080"
-                }), 200
+                # প্যানেলের রিকোয়েস্ট করা সেই হুবহু রেসপন্স ফরম্যাট
+                return Response("168.144.97.15:1905", status=200, mimetype='text/plain')
 
-        return jsonify({"status": "failed", "message": "NOT whitelisted"}), 403
+        # হোয়াইটলিস্টেড না থাকলে খালি রেসপন্স বা এরর দেওয়া
+        return Response("Unauthorized UID", status=403, mimetype='text/plain')
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return Response(str(e), status=500, mimetype='text/plain')
 
+
+# ২. সার্টিফিকেট রেসপন্স এন্ডপয়েন্ট (image_e320dd.png অনুযায়ী হুবহু PEM রেসপন্স)
 @app.route('/api/certificate', methods=['GET', 'POST'])
 async def get_certificate():
-    return jsonify({"status": "success", "certificate": "valid_cert_data_here"})
+    cert_data = (
+        "-----BEGIN CERTIFICATE-----\n"
+        "MIIDNTCCAh2gAwIBAgIUd51MdSXNEYJ5hcaHqvZI2RzSHQYWDQYJKoZIhvcNAQEL\n"
+        "BQAwKDESMBAGA1UEAwwJbW1oXbYb3h5MRIwEAYDVQQKDAl0aXtHjveHkwHhcN\n"
+        "MjYwNDI0MTAwMjQWhcNMzYwNDI1MTAwMjAoMRIwEAYDVQQKDAl0aXtHjveHj\n"
+        "eHkxEjAQBgNVBAMMC1pwdG1w94etTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC\n"
+        "AQoCggEBALZwx hZmEODKBNK5+4HseWqH8VAEbRzy3D5LB0iqFMoLOmHj/PzcHy0\n"
+        "ilcg+xZ+yxaeqiYjdHfgC0z/XnVBi5h8xqJZc395DSskaFTOcuSH77XxWPuKIe2z\n"
+        "NcWQMjIZ75SkX3QqnnwwxyigolehoQl3bTSscOpqZVqXOVPIvev9g8SRT+GG4+Qx\n"
+        "7FtxPOF1Hw1kQt+PMW4yc8tHFSnGbLTfxOrmrW4Fvka1JFuV7gBd1pqnXMlFREG/\n"
+        "ZNudP/qXv6LLjRvcgKL0Kmr55kwAn2atyr50VjNnJdlUBv6tFGYQiMs1Bgt3rTT0\n"
+        "p+lTAjaZHrfcsoDIwn/nortvNJ4VcjMCAwEAAaNXMFUwDwYDVR0TAQH/BAUwAwEB\n"
+        "/zATBgNVHSUEDDAKBggrBgEFBQcDATAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYE\n"
+        "FMnVuvmLj86XBNIEvowpXAqurv7bMA0GCSqGSIb3DQEBCwUAA4IBAQA0nJDV2h1O\n"
+        "/Mq0QdDEcxzPC+8mhnoBLs0uZtML09/K16c/FhC10JAyldLTbJAgXTYmteYRFsR\n"
+        "TtKLHxJ83rgXMXBmN1vT+Ls61LPk5WI8EOFKFYOMdj05Q9kztCynaqwL98xcVmka\n"
+        "RjaZjBr/wJ3lurTMjCCFy9i8BkraspQJbSnfDPdNANHpZNXfSv8/IWJQ/pt9Q+j\n"
+        "q+YmggaU3LWsZ5ZH1z/NcPDTndwEa/sUs4xkFOPA+DLXH3uKALLTorEaY8WNNLya\n"
+        "3BUXFQzW7jqkQ/GSjZ3OFyceYzyXLKK386J81vzR92QSoesQFZWyUiSR4MWhNLRf\n"
+        "Yghj7x8ARJup\n"
+        "-----END CERTIFICATE-----\n"
+    )
+    return Response(cert_data, status=200, mimetype='text/plain')
+
 
 # ==========================================
 # 🚀 রান করার মেইন ফাংশন
